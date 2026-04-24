@@ -10,31 +10,12 @@
     "default": false
   },
   "global_words": {
-    "description": "全局普通违禁词；默认提供基础广告/诈骗/黑灰产词条，可在 WebUI 中自行增删",
+    "description": "全局普通违禁词；词库属于运行配置数据，建议在 WebUI 或本地配置 JSON 中维护",
     "type": "list",
-    "default": [
-      "博彩",
-      "赌博",
-      "现金网",
-      "刷单",
-      "返利",
-      "贷款",
-      "代开发票",
-      "假证",
-      "外挂",
-      "私服",
-      "辅助脚本",
-      "租号",
-      "卖号",
-      "裸聊",
-      "约炮",
-      "加微信",
-      "加薇",
-      "加v"
-    ]
+    "default": []
   },
   "global_regex_rules": {
-    "description": "全局正则违禁规则；仅建议在 WebUI 中维护，不会通过 QQ 命令回显具体规则",
+    "description": "全局正则违禁规则；词库属于运行配置数据，建议在 WebUI 或本地配置 JSON 中维护，不会通过 QQ 命令回显具体规则",
     "type": "list",
     "default": []
   },
@@ -61,7 +42,7 @@
   "max_word_count": {
     "description": "每个词库最多词条数，范围 1-5000",
     "type": "int",
-    "default": 200
+    "default": 500
   },
   "max_word_length": {
     "description": "单个词条最大长度，范围 1-512",
@@ -77,6 +58,16 @@
     "description": "全局默认禁言时间，单位秒；群聊可通过命令单独覆盖",
     "type": "int",
     "default": 600
+  },
+  "mute_escalation_multiplier": {
+    "description": "连续命中时的默认禁言叠加倍率；群聊可通过 /cf mute-stack 单独覆盖",
+    "type": "int",
+    "default": 2
+  },
+  "mute_escalation_reset_seconds": {
+    "description": "连续命中禁言叠加刷新时间，单位秒；超过该时间未命中会从首次命中重新计算",
+    "type": "int",
+    "default": 3600
   },
   "default_report_days": {
     "description": "手动生成违禁词历史报表时的默认统计天数",

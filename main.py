@@ -52,6 +52,12 @@ class ChatFilterPlugin(Star):
             self.repository,
             logger=logger,
             default_mute_duration_seconds=self.settings.mute_duration_seconds,
+            default_mute_escalation_multiplier=(
+                self.settings.mute_escalation_multiplier
+            ),
+            default_mute_escalation_reset_seconds=(
+                self.settings.mute_escalation_reset_seconds
+            ),
         )
         self.violation_recorder = ViolationRecorder(self.repository, logger)
         self.state = load_runtime_state(self.repository, logger)
@@ -164,6 +170,33 @@ class ChatFilterPlugin(Star):
                 snapshot,
                 group_id=group_id,
                 seconds=seconds,
+            )
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("mute-stack")
+    async def cf_mute_stack(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        multiplier: str = "",
+        reset_seconds: str = "",
+    ):
+        snapshot = dehydrate_event_snapshot(event)
+        if group_id == "list" and not multiplier and not reset_seconds:
+            yield event.plain_result(
+                await self.command_service.format_group_mute_escalation_policies(
+                    snapshot.platform
+                )
+            )
+            return
+
+        yield event.plain_result(
+            await self.command_service.set_group_mute_escalation(
+                snapshot,
+                group_id=group_id,
+                multiplier=multiplier,
+                reset_seconds=reset_seconds,
             )
         )
 

@@ -17,6 +17,7 @@ from .platform_actions import (
     SendTextLogRequest,
 )
 from .repository import ChatFilterRepository, ViolationActionName
+from .settings import MAX_MUTE_DURATION_SECONDS
 
 
 ACTION_MUTE: ViolationActionName = "mute"
@@ -46,10 +47,16 @@ class ViolationActionExecutor:
         *,
         logger: ActionLogger,
         default_mute_duration_seconds: int,
+        default_mute_escalation_multiplier: int,
+        default_mute_escalation_reset_seconds: int,
     ) -> None:
         self._repository = repository
         self._logger = logger
         self._default_mute_duration_seconds = default_mute_duration_seconds
+        self._default_mute_escalation_multiplier = default_mute_escalation_multiplier
+        self._default_mute_escalation_reset_seconds = (
+            default_mute_escalation_reset_seconds
+        )
 
     async def execute(
         self,
@@ -90,7 +97,11 @@ class ViolationActionExecutor:
         message: ChatMessage,
         platform_actions: PlatformActions,
     ) -> PlatformActionResult:
-        duration = await self._mute_duration_for_group(message)
+        base_duration = await self._mute_duration_for_group(message)
+        duration = await self._escalated_mute_duration(
+            message,
+            base_duration_seconds=base_duration,
+        )
         return await platform_actions.mute_user(
             MuteUserRequest(
                 platform=message.platform,
@@ -117,6 +128,31 @@ class ViolationActionExecutor:
         if policy is None:
             return self._default_mute_duration_seconds
         return policy.mute_duration_seconds
+
+    async def _escalated_mute_duration(
+        self,
+        message: ChatMessage,
+        *,
+        base_duration_seconds: int,
+    ) -> int:
+        try:
+            decision = await asyncio.to_thread(
+                self._repository.calculate_mute_escalation,
+                platform=message.platform,
+                group_id=message.group_id,
+                user_id=message.user_id,
+                base_duration_seconds=base_duration_seconds,
+                default_multiplier=self._default_mute_escalation_multiplier,
+                default_reset_seconds=self._default_mute_escalation_reset_seconds,
+                max_duration_seconds=MAX_MUTE_DURATION_SECONDS,
+            )
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter mute escalation calculation failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return base_duration_seconds
+        return decision.duration_seconds
 
     async def _recall_message(
         self,

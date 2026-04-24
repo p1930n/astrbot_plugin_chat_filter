@@ -13,7 +13,11 @@ from .platform_actions import (
 from .repository import ChatFilterRepository
 from .settings import (
     MAX_MUTE_DURATION_SECONDS,
+    MAX_MUTE_ESCALATION_MULTIPLIER,
+    MAX_MUTE_ESCALATION_RESET_SECONDS,
     MIN_MUTE_DURATION_SECONDS,
+    MIN_MUTE_ESCALATION_MULTIPLIER,
+    MIN_MUTE_ESCALATION_RESET_SECONDS,
     ChatFilterSettings,
     validate_single_word,
 )
@@ -280,6 +284,80 @@ class ChatFilterCommandService:
             lines.append(f"... and {len(policies) - BIND_LIST_LIMIT} more group(s).")
         return "Chat Filter mute policy list:\n" + "\n".join(lines)
 
+    async def set_group_mute_escalation(
+        self,
+        snapshot: PlatformEventSnapshot,
+        *,
+        group_id: str,
+        multiplier: str,
+        reset_seconds: str,
+    ) -> str:
+        if not _is_valid_qq_group_id(group_id):
+            return (
+                "Usage: .cf mute-stack [group] [multiplier] [reset_seconds] "
+                "or /cf mute-stack [group] [multiplier] [reset_seconds]"
+            )
+
+        parsed_multiplier = _parse_mute_escalation_multiplier(multiplier)
+        parsed_reset_seconds = _parse_mute_escalation_reset_seconds(reset_seconds)
+        if parsed_multiplier is None:
+            return "Invalid mute escalation multiplier."
+        if parsed_reset_seconds is None:
+            return "Invalid mute escalation reset seconds."
+
+        if not snapshot.platform:
+            return "Chat Filter mute escalation update failed: platform is unavailable."
+
+        try:
+            await asyncio.to_thread(
+                self._repository.set_group_mute_escalation_policy,
+                platform=snapshot.platform,
+                group_id=group_id,
+                multiplier=parsed_multiplier,
+                reset_seconds=parsed_reset_seconds,
+                updated_by=snapshot.sender_id,
+            )
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter mute escalation policy update failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return "Chat Filter mute escalation update failed."
+
+        return (
+            "Chat Filter mute escalation updated: "
+            f"{group_id} -> {parsed_multiplier}x, reset {parsed_reset_seconds}s."
+        )
+
+    async def format_group_mute_escalation_policies(self, platform: str) -> str:
+        if not platform:
+            return "Chat Filter mute escalation list failed: platform is unavailable."
+        try:
+            policies = await asyncio.to_thread(
+                self._repository.list_group_mute_escalation_policies,
+                platform=platform,
+            )
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter mute escalation policy list failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return "Chat Filter mute escalation list failed."
+
+        if not policies:
+            return (
+                "Chat Filter mute escalation policy list is empty; "
+                f"default is {self._settings.mute_escalation_multiplier}x, "
+                f"reset {self._settings.mute_escalation_reset_seconds}s."
+            )
+        lines = [
+            f"{policy.group_id}: {policy.multiplier}x, reset {policy.reset_seconds}s"
+            for policy in policies[:BIND_LIST_LIMIT]
+        ]
+        if len(policies) > BIND_LIST_LIMIT:
+            lines.append(f"... and {len(policies) - BIND_LIST_LIMIT} more group(s).")
+        return "Chat Filter mute escalation policy list:\n" + "\n".join(lines)
+
     async def run_forward_probe(
         self,
         snapshot: PlatformEventSnapshot,
@@ -348,5 +426,31 @@ def _parse_mute_duration(value: str) -> int | None:
     except ValueError:
         return None
     if seconds < MIN_MUTE_DURATION_SECONDS or seconds > MAX_MUTE_DURATION_SECONDS:
+        return None
+    return seconds
+
+
+def _parse_mute_escalation_multiplier(value: str) -> int | None:
+    try:
+        multiplier = int(value.strip(), 10)
+    except ValueError:
+        return None
+    if (
+        multiplier < MIN_MUTE_ESCALATION_MULTIPLIER
+        or multiplier > MAX_MUTE_ESCALATION_MULTIPLIER
+    ):
+        return None
+    return multiplier
+
+
+def _parse_mute_escalation_reset_seconds(value: str) -> int | None:
+    try:
+        seconds = int(value.strip(), 10)
+    except ValueError:
+        return None
+    if (
+        seconds < MIN_MUTE_ESCALATION_RESET_SECONDS
+        or seconds > MAX_MUTE_ESCALATION_RESET_SECONDS
+    ):
         return None
     return seconds

@@ -76,6 +76,23 @@ class GroupMutePolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupMuteEscalationPolicy:
+    platform: str
+    group_id: str
+    multiplier: int
+    reset_seconds: int
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class MuteEscalationDecision:
+    duration_seconds: int
+    violation_count: int
+    multiplier: int
+    reset_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
 class ViolationEvent:
     platform: str
     group_id: str

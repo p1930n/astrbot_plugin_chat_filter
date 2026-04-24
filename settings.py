@@ -6,38 +6,22 @@ from typing import Any
 
 
 DEFAULT_WARNING_MESSAGE = "消息触发聊天过滤策略，请调整后重试。"
-DEFAULT_MAX_WORD_COUNT = 200
+DEFAULT_MAX_WORD_COUNT = 500
 DEFAULT_MAX_WORD_LENGTH = 64
 DEFAULT_MAX_REGEX_RULE_COUNT = 50
-DEFAULT_MAX_REGEX_RULE_LENGTH = 160
+DEFAULT_MAX_REGEX_RULE_LENGTH = 500
 DEFAULT_MUTE_DURATION_SECONDS = 600
+DEFAULT_MUTE_ESCALATION_MULTIPLIER = 2
+DEFAULT_MUTE_ESCALATION_RESET_SECONDS = 3600
 MIN_MUTE_DURATION_SECONDS = 10
 MAX_MUTE_DURATION_SECONDS = 2_592_000
+MIN_MUTE_ESCALATION_MULTIPLIER = 1
+MAX_MUTE_ESCALATION_MULTIPLIER = 10
+MIN_MUTE_ESCALATION_RESET_SECONDS = 60
+MAX_MUTE_ESCALATION_RESET_SECONDS = 2_592_000
 DEFAULT_REPORT_DAYS = 7
-DEFAULT_GLOBAL_WORDS = (
-    "博彩",
-    "赌博",
-    "现金网",
-    "刷单",
-    "返利",
-    "贷款",
-    "办证",
-    "代开发票",
-    "假证",
-    "外挂",
-    "私服",
-    "辅助脚本",
-    "租号",
-    "卖号",
-    "裸聊",
-    "约炮",
-    "加微信",
-    "加薇",
-    "加v",
-    "广告合作",
-    "群推广",
-    "引流",
-)
+DEFAULT_GLOBAL_WORDS: tuple[str, ...] = ()
+DEFAULT_GLOBAL_REGEX_RULES: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +44,8 @@ class ChatFilterSettings:
     max_word_length: int = DEFAULT_MAX_WORD_LENGTH
     violation_records_enabled: bool = True
     mute_duration_seconds: int = DEFAULT_MUTE_DURATION_SECONDS
+    mute_escalation_multiplier: int = DEFAULT_MUTE_ESCALATION_MULTIPLIER
+    mute_escalation_reset_seconds: int = DEFAULT_MUTE_ESCALATION_RESET_SECONDS
     default_report_days: int = DEFAULT_REPORT_DAYS
 
     @classmethod
@@ -88,12 +74,20 @@ class ChatFilterSettings:
             enabled=_as_bool(data.get("enabled"), True),
             default_group_enabled=_as_bool(data.get("default_group_enabled"), False),
             global_words=normalize_words(
-                data.get("global_words") or DEFAULT_GLOBAL_WORDS,
+                _config_list_or_default(
+                    data,
+                    key="global_words",
+                    default=DEFAULT_GLOBAL_WORDS,
+                ),
                 max_count=max_word_count,
                 max_length=max_word_length,
             ),
             global_regex_rules=normalize_regex_rules(
-                data.get("global_regex_rules"),
+                _config_list_or_default(
+                    data,
+                    key="global_regex_rules",
+                    default=DEFAULT_GLOBAL_REGEX_RULES,
+                ),
                 case_sensitive=case_sensitive,
                 max_count=DEFAULT_MAX_REGEX_RULE_COUNT,
                 max_length=DEFAULT_MAX_REGEX_RULE_LENGTH,
@@ -106,6 +100,18 @@ class ChatFilterSettings:
             max_word_length=max_word_length,
             violation_records_enabled=_as_bool(data.get("violation_records_enabled"), True),
             mute_duration_seconds=mute_duration_seconds,
+            mute_escalation_multiplier=_bounded_int(
+                data.get("mute_escalation_multiplier"),
+                default=DEFAULT_MUTE_ESCALATION_MULTIPLIER,
+                minimum=MIN_MUTE_ESCALATION_MULTIPLIER,
+                maximum=MAX_MUTE_ESCALATION_MULTIPLIER,
+            ),
+            mute_escalation_reset_seconds=_bounded_int(
+                data.get("mute_escalation_reset_seconds"),
+                default=DEFAULT_MUTE_ESCALATION_RESET_SECONDS,
+                minimum=MIN_MUTE_ESCALATION_RESET_SECONDS,
+                maximum=MAX_MUTE_ESCALATION_RESET_SECONDS,
+            ),
             default_report_days=_bounded_int(
                 data.get("default_report_days", data.get("default_report_interval_days")),
                 default=DEFAULT_REPORT_DAYS,
@@ -201,6 +207,17 @@ def _looks_like_high_risk_regex(pattern: str) -> bool:
     if re.search(r"\\[1-9]", pattern):
         return True
     return False
+
+
+def _config_list_or_default(
+    data: dict[str, Any],
+    *,
+    key: str,
+    default: tuple[str, ...],
+) -> object:
+    if key not in data:
+        return default
+    return data[key]
 
 
 def _as_bool(value: object, default: bool) -> bool:
