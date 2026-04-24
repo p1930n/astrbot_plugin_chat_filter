@@ -50,19 +50,9 @@
     "default": true
   },
   "mute_duration_seconds": {
-    "description": "默认禁言时长，单位秒；实际执行前会按最小和最大边界裁剪",
+    "description": "全局默认禁言时间，单位秒；群聊可通过命令单独覆盖",
     "type": "int",
     "default": 600
-  },
-  "mute_min_seconds": {
-    "description": "QQ 禁言最小时长边界，单位秒；后续平台动作实现前需按适配器确认",
-    "type": "int",
-    "default": 60
-  },
-  "mute_max_seconds": {
-    "description": "QQ 禁言最大时长边界，单位秒；默认 30 天，后续平台动作实现前需按适配器确认",
-    "type": "int",
-    "default": 2592000
   },
   "report_files_enabled": {
     "description": "启用周期违禁词历史文件；当前阶段仅保留配置，发送任务后续实现",

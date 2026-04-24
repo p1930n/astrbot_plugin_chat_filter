@@ -57,6 +57,14 @@ class PushBinding:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupMutePolicy:
+    platform: str
+    group_id: str
+    mute_duration_seconds: int
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class ViolationEvent:
     platform: str
     group_id: str

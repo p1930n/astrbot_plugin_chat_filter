@@ -76,5 +76,12 @@
 ## Commit / Push 记录
 
 - Commit: `0f13183 Phase 02 SQLite bindings and violation records`.
-- Push: pushed to `origin/main`.
+- Push: originally pushed to `origin/main`; follow-up development now targets `origin/working`.
 
+## Acceptance Amendment: Mute Duration Policy
+
+- WebUI should expose only `mute_duration_seconds` as the global default mute duration in seconds.
+- WebUI should not expose mute minimum or maximum bounds.
+- Internal validation uses 10 seconds as the lower bound because QQ backend mute duration can be shorter than the frontend display boundary.
+- Group-specific mute duration is stored in SQLite and managed separately from WebUI global defaults.
+- Added group-level mute policy groundwork for later platform-action execution.

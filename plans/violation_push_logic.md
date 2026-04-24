@@ -263,15 +263,13 @@ B群: 推送群3
 
 **3. 禁言时间放 WebUI**
 
-可行。建议 WebUI 放三个参数：
+可行。WebUI 只放一个全局默认值：
 
 ```text
 mute_duration_seconds
-mute_min_seconds
-mute_max_seconds
 ```
 
-但 QQ/适配器实际允许的最大最小值不要凭记忆硬编码，后续实现前按 AstrBot/QQ 适配器确认。运行时再 clamp 到允许范围。
+不要在 WebUI 暴露最大/最小禁言时间。QQ 前端显示的 60 秒不是后端真实下限，后端可到 10 秒；群聊可通过 SQLite 中的群级策略单独覆盖禁言时长。
 
 **4. 周期文件按群自定义**
 

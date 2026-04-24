@@ -12,6 +12,7 @@ from .matcher import ChatFilterMatcher
 from .models import ChatMessage, GroupPolicy, PushBinding, RuntimeState, ViolationEvent
 from .repository import ChatFilterRepository, default_data_root
 from .settings import ChatFilterSettings, validate_single_word
+from .settings import MAX_MUTE_DURATION_SECONDS, MIN_MUTE_DURATION_SECONDS
 
 
 ACTION_NOT_SCHEDULED = "not_scheduled"
@@ -93,6 +94,48 @@ class ChatFilterPlugin(Star):
         yield event.plain_result(
             "Chat Filter bind updated: "
             f"{listening_group} has {count} push group(s)."
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("mute")
+    async def cf_mute(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        seconds: str = "",
+    ):
+        if group_id == "list" and not seconds:
+            yield event.plain_result(await self._format_group_mute_policies(event))
+            return
+
+        if not _is_valid_qq_group_id(group_id):
+            yield event.plain_result("Usage: .cf mute [group] [seconds]")
+            return
+
+        duration = _parse_mute_duration(seconds)
+        if duration is None:
+            yield event.plain_result("Invalid mute duration seconds.")
+            return
+
+        platform = _safe_value(event.get_platform_name())
+        if not platform:
+            yield event.plain_result(
+                "Chat Filter mute policy update failed: platform is unavailable."
+            )
+            return
+
+        if not await self._try_set_group_mute_duration(
+            platform=platform,
+            group_id=group_id,
+            mute_duration_seconds=duration,
+            updated_by=_safe_value(event.get_sender_id()),
+        ):
+            yield event.plain_result("Chat Filter mute policy update failed.")
+            return
+
+        yield event.plain_result(
+            "Chat Filter mute policy updated: "
+            f"{group_id} -> {duration} second(s)."
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -302,6 +345,50 @@ class ChatFilterPlugin(Star):
             lines.append(f"... and {len(grouped) - BIND_LIST_LIMIT} more group(s).")
         return "Chat Filter bind list:\n" + "\n".join(lines)
 
+    async def _try_set_group_mute_duration(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        mute_duration_seconds: int,
+        updated_by: str,
+    ) -> bool:
+        try:
+            await asyncio.to_thread(
+                self.repository.set_group_mute_duration,
+                platform=platform,
+                group_id=group_id,
+                mute_duration_seconds=mute_duration_seconds,
+                updated_by=updated_by,
+            )
+            return True
+        except Exception as exc:
+            logger.error("Chat Filter group mute policy update failed: %s", exc)
+            return False
+
+    async def _format_group_mute_policies(self, event: AstrMessageEvent) -> str:
+        platform = _safe_value(event.get_platform_name())
+        if not platform:
+            return "Chat Filter mute policy list failed: platform is unavailable."
+        try:
+            policies = await asyncio.to_thread(
+                self.repository.list_group_mute_policies,
+                platform=platform,
+            )
+        except Exception as exc:
+            logger.error("Chat Filter group mute policy list failed: %s", exc)
+            return "Chat Filter mute policy list failed."
+
+        if not policies:
+            return "Chat Filter mute policy list is empty."
+        lines = [
+            f"{policy.group_id}: {policy.mute_duration_seconds} second(s)"
+            for policy in policies[:BIND_LIST_LIMIT]
+        ]
+        if len(policies) > BIND_LIST_LIMIT:
+            lines.append(f"... and {len(policies) - BIND_LIST_LIMIT} more group(s).")
+        return "Chat Filter mute policy list:\n" + "\n".join(lines)
+
     async def _try_record_violation(
         self,
         message: ChatMessage,
@@ -404,6 +491,16 @@ def _group_push_bindings(bindings: list[PushBinding]) -> dict[str, list[str]]:
     for binding in bindings:
         grouped[binding.listening_group_id].append(binding.push_group_id)
     return dict(grouped)
+
+
+def _parse_mute_duration(value: str) -> int | None:
+    try:
+        seconds = int(value.strip(), 10)
+    except ValueError:
+        return None
+    if seconds < MIN_MUTE_DURATION_SECONDS or seconds > MAX_MUTE_DURATION_SECONDS:
+        return None
+    return seconds
 
 
 def _matched_excerpt(text: str, matched_word: str) -> str:

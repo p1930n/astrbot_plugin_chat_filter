@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .models import GroupPolicy, PushBinding, RuntimeState, ViolationEvent
+from .models import GroupMutePolicy, GroupPolicy, PushBinding, RuntimeState, ViolationEvent
 from .settings import normalize_words
 
 
@@ -96,6 +96,17 @@ class ChatFilterRepository:
                 enabled INTEGER NOT NULL DEFAULT 1,
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY (platform, listening_group_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS group_mute_policies (
+                platform TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                mute_duration_seconds INTEGER NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                updated_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (platform, group_id)
             );
 
             CREATE TABLE IF NOT EXISTS violation_batches (
@@ -359,6 +370,70 @@ class ChatFilterRepository:
             (platform, listening_group_id),
         )
         return int(cursor.fetchone()[0])
+
+    def set_group_mute_duration(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        mute_duration_seconds: int,
+        updated_by: str,
+    ) -> None:
+        self._root.mkdir(parents=True, exist_ok=True)
+        now = _utc_now()
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO group_mute_policies (
+                        platform,
+                        group_id,
+                        mute_duration_seconds,
+                        enabled,
+                        updated_by,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                    ON CONFLICT (platform, group_id)
+                    DO UPDATE SET
+                        mute_duration_seconds = excluded.mute_duration_seconds,
+                        enabled = 1,
+                        updated_by = excluded.updated_by,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        platform,
+                        group_id,
+                        mute_duration_seconds,
+                        updated_by,
+                        now,
+                        now,
+                    ),
+                )
+
+    def list_group_mute_policies(self, *, platform: str) -> list[GroupMutePolicy]:
+        self._root.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            return [
+                GroupMutePolicy(
+                    platform=row[0],
+                    group_id=row[1],
+                    mute_duration_seconds=int(row[2]),
+                    enabled=bool(row[3]),
+                )
+                for row in connection.execute(
+                    """
+                    SELECT platform, group_id, mute_duration_seconds, enabled
+                    FROM group_mute_policies
+                    WHERE platform = ? AND enabled = 1
+                    ORDER BY group_id
+                    """,
+                    (platform,),
+                )
+            ]
 
     def record_violation(self, violation: ViolationEvent) -> int:
         self._root.mkdir(parents=True, exist_ok=True)

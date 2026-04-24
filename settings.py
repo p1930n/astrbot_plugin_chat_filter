@@ -7,9 +7,9 @@ from typing import Any
 DEFAULT_WARNING_MESSAGE = "消息触发聊天过滤策略，请调整后重试。"
 DEFAULT_MAX_WORD_COUNT = 200
 DEFAULT_MAX_WORD_LENGTH = 64
-DEFAULT_MUTE_MIN_SECONDS = 60
-DEFAULT_MUTE_MAX_SECONDS = 2_592_000
 DEFAULT_MUTE_DURATION_SECONDS = 600
+MIN_MUTE_DURATION_SECONDS = 10
+MAX_MUTE_DURATION_SECONDS = 2_592_000
 DEFAULT_REPORT_INTERVAL_DAYS = 7
 
 
@@ -26,8 +26,6 @@ class ChatFilterSettings:
     max_word_length: int = DEFAULT_MAX_WORD_LENGTH
     violation_records_enabled: bool = True
     mute_duration_seconds: int = DEFAULT_MUTE_DURATION_SECONDS
-    mute_min_seconds: int = DEFAULT_MUTE_MIN_SECONDS
-    mute_max_seconds: int = DEFAULT_MUTE_MAX_SECONDS
     report_files_enabled: bool = False
     default_report_interval_days: int = DEFAULT_REPORT_INTERVAL_DAYS
 
@@ -46,23 +44,11 @@ class ChatFilterSettings:
             minimum=1,
             maximum=512,
         )
-        mute_min_seconds = _bounded_int(
-            data.get("mute_min_seconds"),
-            default=DEFAULT_MUTE_MIN_SECONDS,
-            minimum=1,
-            maximum=DEFAULT_MUTE_MAX_SECONDS,
-        )
-        mute_max_seconds = _bounded_int(
-            data.get("mute_max_seconds"),
-            default=DEFAULT_MUTE_MAX_SECONDS,
-            minimum=mute_min_seconds,
-            maximum=DEFAULT_MUTE_MAX_SECONDS,
-        )
         mute_duration_seconds = _bounded_int(
             data.get("mute_duration_seconds"),
             default=DEFAULT_MUTE_DURATION_SECONDS,
-            minimum=mute_min_seconds,
-            maximum=mute_max_seconds,
+            minimum=MIN_MUTE_DURATION_SECONDS,
+            maximum=MAX_MUTE_DURATION_SECONDS,
         )
         return cls(
             enabled=_as_bool(data.get("enabled"), True),
@@ -80,8 +66,6 @@ class ChatFilterSettings:
             max_word_length=max_word_length,
             violation_records_enabled=_as_bool(data.get("violation_records_enabled"), True),
             mute_duration_seconds=mute_duration_seconds,
-            mute_min_seconds=mute_min_seconds,
-            mute_max_seconds=mute_max_seconds,
             report_files_enabled=_as_bool(data.get("report_files_enabled"), False),
             default_report_interval_days=_bounded_int(
                 data.get("default_report_interval_days"),
