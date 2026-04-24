@@ -10,6 +10,8 @@ devlogs/
     sqlite-bindings.md
   phase-03/
     <module-name>.md
+  phase-04/
+    <module-name>.md
 ```
 
 Rules:

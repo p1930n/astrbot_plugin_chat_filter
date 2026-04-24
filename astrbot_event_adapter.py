@@ -54,6 +54,23 @@ def current_group_key_from_event(event: AstrMessageEvent) -> str | None:
     return f"{snapshot.platform}:{snapshot.group_id}"
 
 
+def extract_onebot_action_client(event: AstrMessageEvent) -> object | None:
+    try:
+        bot = getattr(event, "bot", None)
+    except Exception:
+        return None
+    if bot is None:
+        return None
+
+    try:
+        action_client = getattr(bot, "api", None)
+    except Exception:
+        return None
+    if action_client is None:
+        return None
+    return action_client
+
+
 def has_required_message_scope(message: ChatMessage) -> bool:
     return bool(message.platform and message.group_id and message.user_id)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, Sequence
+from typing import Any, Literal, Protocol, Sequence
 
 from .models import PlatformEventSnapshot
 
@@ -11,6 +11,9 @@ ActionStatus = Literal["not_scheduled", "pending", "success", "failed", "unsuppo
 
 ACTION_STATUS_UNSUPPORTED: ActionStatus = "unsupported"
 UNSUPPORTED_REASON_PHASE_03 = "phase_03_platform_api_unconfirmed"
+UNSUPPORTED_REASON_NO_ACTION_CLIENT = "onebot_action_client_missing"
+FAILED_REASON_ACTION_CALL_FAILED = "onebot_action_call_failed"
+FAILED_REASON_INVALID_ACTION_SCOPE = "invalid_onebot_action_scope"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +51,10 @@ class PlatformActionResult:
             status=ACTION_STATUS_UNSUPPORTED,
             reason=UNSUPPORTED_REASON_PHASE_03,
         )
+
+    @classmethod
+    def failed(cls, reason: str) -> "PlatformActionResult":
+        return cls(status="failed", reason=reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +127,11 @@ class PlatformActions(Protocol):
         ...
 
 
+class ActionClient(Protocol):
+    async def call_action(self, action: str, **params: Any) -> Any:
+        ...
+
+
 class QQPlatformActions:
     """Phase 03 platform boundary; real AstrBot/QQ calls are intentionally absent."""
 
@@ -155,6 +167,92 @@ class QQPlatformActions:
         return PlatformActionResult.unsupported()
 
 
+class OneBotV11PlatformActions:
+    def __init__(self, action_client: ActionClient | None) -> None:
+        self._action_client = action_client
+
+    def probe_capabilities(self, platform: str) -> PlatformActionCapabilities:
+        _ = platform
+        has_client = self._action_client is not None
+        return PlatformActionCapabilities(
+            mute_user=has_client,
+            recall_message=has_client,
+        )
+
+    def initial_violation_statuses(self, platform: str) -> ViolationActionStatuses:
+        _ = platform
+        if self._action_client is None:
+            return ViolationActionStatuses.unsupported()
+        return ViolationActionStatuses(
+            mute="pending",
+            recall="pending",
+            forward=ACTION_STATUS_UNSUPPORTED,
+        )
+
+    async def mute_user(self, request: MuteUserRequest) -> PlatformActionResult:
+        if self._action_client is None:
+            return PlatformActionResult(
+                status=ACTION_STATUS_UNSUPPORTED,
+                reason=UNSUPPORTED_REASON_NO_ACTION_CLIENT,
+            )
+
+        group_id = _parse_positive_int(request.group_id)
+        user_id = _parse_positive_int(request.user_id)
+        if group_id is None or user_id is None:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_ACTION_SCOPE)
+
+        return await self._call_action(
+            "set_group_ban",
+            group_id=group_id,
+            user_id=user_id,
+            duration=request.duration_seconds,
+        )
+
+    async def recall_message(self, request: RecallMessageRequest) -> PlatformActionResult:
+        if self._action_client is None:
+            return PlatformActionResult(
+                status=ACTION_STATUS_UNSUPPORTED,
+                reason=UNSUPPORTED_REASON_NO_ACTION_CLIENT,
+            )
+
+        message_id = _parse_positive_int(request.message_id)
+        if message_id is None:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_ACTION_SCOPE)
+
+        return await self._call_action(
+            "delete_msg",
+            message_id=message_id,
+        )
+
+    async def send_forward_message(
+        self,
+        request: SendForwardMessageRequest,
+    ) -> PlatformActionResult:
+        _ = request
+        return PlatformActionResult.unsupported()
+
+    async def send_text_log(self, request: SendTextLogRequest) -> PlatformActionResult:
+        _ = request
+        return PlatformActionResult.unsupported()
+
+    async def send_file(self, request: SendFileRequest) -> PlatformActionResult:
+        _ = request
+        return PlatformActionResult.unsupported()
+
+    async def _call_action(self, action: str, **params: Any) -> PlatformActionResult:
+        if self._action_client is None:
+            return PlatformActionResult(
+                status=ACTION_STATUS_UNSUPPORTED,
+                reason=UNSUPPORTED_REASON_NO_ACTION_CLIENT,
+            )
+
+        try:
+            await self._action_client.call_action(action, **params)
+        except Exception:
+            return PlatformActionResult.failed(FAILED_REASON_ACTION_CALL_FAILED)
+        return PlatformActionResult(status="success")
+
+
 def format_platform_probe(
     snapshot: PlatformEventSnapshot,
     capabilities: PlatformActionCapabilities,
@@ -183,3 +281,13 @@ def _capability_state(enabled: bool) -> str:
 
 def _field_state(value: str) -> str:
     return "present" if value else "missing"
+
+
+def _parse_positive_int(value: str) -> int | None:
+    try:
+        parsed = int(value, 10)
+    except ValueError:
+        return None
+    if parsed <= 0:
+        return None
+    return parsed

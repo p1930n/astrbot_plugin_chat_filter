@@ -26,6 +26,13 @@ state.json
 logs/
 *.log
 
+.agents/
+agents/
+AGENTS.md
+agents.md
+ARCHITECTURE.md
+architecture.md
+
 *.tmp
 *.bak
 *.old

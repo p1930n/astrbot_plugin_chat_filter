@@ -6,7 +6,7 @@ import sqlite3
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .models import GroupMutePolicy, GroupPolicy, PushBinding, RuntimeState, ViolationEvent
 from .settings import normalize_words
@@ -15,6 +15,12 @@ from .settings import normalize_words
 STATE_FILENAME = "state.json"
 DATABASE_FILENAME = "chat_filter.db"
 GLOBAL_ENABLED_KEY = "global_enabled"
+ViolationActionName = Literal["mute", "recall", "forward"]
+_VIOLATION_ACTION_STATUS_COLUMNS: dict[ViolationActionName, str] = {
+    "mute": "action_mute_status",
+    "recall": "action_recall_status",
+    "forward": "action_forward_status",
+}
 
 
 class ChatFilterRepository:
@@ -435,6 +441,33 @@ class ChatFilterRepository:
                 )
             ]
 
+    def get_enabled_group_mute_policy(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+    ) -> GroupMutePolicy | None:
+        self._root.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            cursor = connection.execute(
+                """
+                SELECT platform, group_id, mute_duration_seconds, enabled
+                FROM group_mute_policies
+                WHERE platform = ? AND group_id = ? AND enabled = 1
+                """,
+                (platform, group_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return GroupMutePolicy(
+                platform=row[0],
+                group_id=row[1],
+                mute_duration_seconds=int(row[2]),
+                enabled=bool(row[3]),
+            )
+
     def record_violation(self, violation: ViolationEvent) -> int:
         self._root.mkdir(parents=True, exist_ok=True)
         now = _utc_now()
@@ -479,6 +512,36 @@ class ChatFilterRepository:
                 if cursor.lastrowid:
                     return int(cursor.lastrowid)
                 return self._find_violation_id(connection, violation)
+
+    def update_violation_action_status(
+        self,
+        *,
+        violation_id: int,
+        action: ViolationActionName,
+        status: str,
+    ) -> None:
+        column = _VIOLATION_ACTION_STATUS_COLUMNS.get(action)
+        if column is None:
+            raise ValueError(f"unsupported violation action: {action}")
+
+        self._root.mkdir(parents=True, exist_ok=True)
+        now = _utc_now()
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            with connection:
+                cursor = connection.execute(
+                    f"""
+                    UPDATE violation_events
+                    SET {column} = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (status, now, violation_id),
+                )
+                if cursor.rowcount != 1:
+                    raise RuntimeError(
+                        "violation action status update affected "
+                        f"{cursor.rowcount} rows"
+                    )
 
     def _find_violation_id(
         self,
