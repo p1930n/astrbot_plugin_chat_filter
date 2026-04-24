@@ -189,7 +189,7 @@ class OneBotV11PlatformActions:
         return ViolationActionStatuses(
             mute="pending",
             recall="pending",
-            forward=ACTION_STATUS_UNSUPPORTED,
+            forward="pending",
         )
 
     async def mute_user(self, request: MuteUserRequest) -> PlatformActionResult:

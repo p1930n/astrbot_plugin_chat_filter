@@ -3,20 +3,29 @@ from __future__ import annotations
 import asyncio
 from typing import Protocol
 
-from .models import ChatMessage
+from .models import ChatMessage, PushBinding, ViolationPushDelivery
 from .platform_actions import (
     ACTION_STATUS_UNSUPPORTED,
+    ActionStatus,
+    ForwardMessageNode,
     MuteUserRequest,
     PlatformActionResult,
     PlatformActions,
     RecallMessageRequest,
+    SendForwardMessageRequest,
 )
 from .repository import ChatFilterRepository, ViolationActionName
 
 
 ACTION_MUTE: ViolationActionName = "mute"
 ACTION_RECALL: ViolationActionName = "recall"
+ACTION_FORWARD: ViolationActionName = "forward"
 REASON_MESSAGE_ID_MISSING = "message_id_missing"
+REASON_NO_PUSH_BINDINGS = "no_push_bindings"
+REASON_PUSH_BINDING_LOOKUP_FAILED = "push_binding_lookup_failed"
+REASON_FORWARD_ACTION_FAILED = "forward_action_failed"
+REASON_FORWARD_ACTION_TIMEOUT = "forward_action_timeout"
+FORWARD_ACTION_TIMEOUT_SECONDS = 10.0
 
 
 class ActionLogger(Protocol):
@@ -55,6 +64,17 @@ class ViolationActionExecutor:
             violation_id=violation_id,
             action=ACTION_RECALL,
             result=recall_result,
+        )
+
+        forward_result = await self._forward_message(
+            violation_id=violation_id,
+            message=message,
+            platform_actions=platform_actions,
+        )
+        await self._try_update_status(
+            violation_id=violation_id,
+            action=ACTION_FORWARD,
+            result=forward_result,
         )
 
     async def _mute_user(
@@ -108,6 +128,118 @@ class ViolationActionExecutor:
             )
         )
 
+    async def _forward_message(
+        self,
+        *,
+        violation_id: int,
+        message: ChatMessage,
+        platform_actions: PlatformActions,
+    ) -> PlatformActionResult:
+        bindings = await self._push_bindings_for_group(message)
+        if bindings is None:
+            return PlatformActionResult.failed(REASON_PUSH_BINDING_LOOKUP_FAILED)
+        if not bindings:
+            return PlatformActionResult(
+                status="not_scheduled",
+                reason=REASON_NO_PUSH_BINDINGS,
+            )
+
+        results: list[PlatformActionResult] = []
+        for binding in bindings:
+            await self._try_record_push_delivery(
+                ViolationPushDelivery(
+                    violation_id=violation_id,
+                    platform=message.platform,
+                    listening_group_id=message.group_id,
+                    push_group_id=binding.push_group_id,
+                    action_status="pending",
+                )
+            )
+            result = await self._send_forward_message(
+                message=message,
+                platform_actions=platform_actions,
+                push_group_id=binding.push_group_id,
+            )
+            results.append(result)
+            await self._try_record_push_delivery(
+                ViolationPushDelivery(
+                    violation_id=violation_id,
+                    platform=message.platform,
+                    listening_group_id=message.group_id,
+                    push_group_id=binding.push_group_id,
+                    action_status=result.status,
+                    error_code=result.reason,
+                )
+            )
+
+        return PlatformActionResult(status=_aggregate_forward_status(results))
+
+    async def _push_bindings_for_group(
+        self,
+        message: ChatMessage,
+    ) -> list[PushBinding] | None:
+        try:
+            return await asyncio.to_thread(
+                self._repository.list_enabled_push_bindings_for_group,
+                platform=message.platform,
+                listening_group_id=message.group_id,
+            )
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter push binding lookup failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return None
+
+    async def _send_forward_message(
+        self,
+        *,
+        message: ChatMessage,
+        platform_actions: PlatformActions,
+        push_group_id: str,
+    ) -> PlatformActionResult:
+        request = SendForwardMessageRequest(
+            platform=message.platform,
+            target_group_id=push_group_id,
+            nodes=(
+                ForwardMessageNode(
+                    sender_id=message.user_id,
+                    sender_display_name=message.sender_display_name,
+                    text=message.text,
+                ),
+            ),
+        )
+        try:
+            return await asyncio.wait_for(
+                platform_actions.send_forward_message(request),
+                timeout=FORWARD_ACTION_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return PlatformActionResult.failed(REASON_FORWARD_ACTION_TIMEOUT)
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter forward message failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return PlatformActionResult.failed(REASON_FORWARD_ACTION_FAILED)
+
+    async def _try_record_push_delivery(
+        self,
+        delivery: ViolationPushDelivery,
+    ) -> None:
+        try:
+            await asyncio.to_thread(
+                self._repository.upsert_violation_push_delivery,
+                delivery,
+            )
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter violation push delivery update failed: "
+                "push_group_id=%s error_type=%s",
+                delivery.push_group_id,
+                type(exc).__name__,
+            )
+
     async def _try_update_status(
         self,
         *,
@@ -129,3 +261,13 @@ class ViolationActionExecutor:
                 action,
                 type(exc).__name__,
             )
+
+
+def _aggregate_forward_status(results: list[PlatformActionResult]) -> ActionStatus:
+    if not results:
+        return "not_scheduled"
+    if all(result.status == "success" for result in results):
+        return "success"
+    if all(result.status == ACTION_STATUS_UNSUPPORTED for result in results):
+        return ACTION_STATUS_UNSUPPORTED
+    return "failed"

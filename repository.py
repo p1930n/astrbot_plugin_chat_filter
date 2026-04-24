@@ -389,6 +389,35 @@ class ChatFilterRepository:
                 )
             ]
 
+    def list_enabled_push_bindings_for_group(
+        self,
+        *,
+        platform: str,
+        listening_group_id: str,
+    ) -> list[PushBinding]:
+        self._root.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            return [
+                PushBinding(
+                    platform=row[0],
+                    listening_group_id=row[1],
+                    push_group_id=row[2],
+                    enabled=bool(row[3]),
+                )
+                for row in connection.execute(
+                    """
+                    SELECT platform, listening_group_id, push_group_id, enabled
+                    FROM group_push_bindings
+                    WHERE platform = ?
+                        AND listening_group_id = ?
+                        AND enabled = 1
+                    ORDER BY push_group_id
+                    """,
+                    (platform, listening_group_id),
+                )
+            ]
+
     def count_push_bindings(
         self,
         connection: sqlite3.Connection,
