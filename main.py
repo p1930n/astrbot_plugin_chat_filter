@@ -164,6 +164,22 @@ class ChatFilterPlugin(Star):
         yield event.plain_result(format_platform_probe(snapshot, capabilities))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("forward-probe")
+    async def cf_forward_probe(
+        self,
+        event: AstrMessageEvent,
+        target_group: str = "",
+    ):
+        snapshot = dehydrate_event_snapshot(event)
+        yield event.plain_result(
+            await self.command_service.run_forward_probe(
+                snapshot,
+                self._platform_actions_for_event(event),
+                target_group,
+            )
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("status")
     async def chatfilter_status(self, event: AstrMessageEvent):
         yield event.plain_result(self.command_service.format_status())

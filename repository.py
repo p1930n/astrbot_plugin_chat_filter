@@ -8,7 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from .models import GroupMutePolicy, GroupPolicy, PushBinding, RuntimeState, ViolationEvent
+from .models import (
+    GroupMutePolicy,
+    GroupPolicy,
+    PushBinding,
+    RuntimeState,
+    ViolationEvent,
+    ViolationPushDelivery,
+)
 from .settings import normalize_words
 
 
@@ -172,6 +179,28 @@ class ChatFilterRepository:
 
             CREATE INDEX IF NOT EXISTS idx_violation_events_file_batch
             ON violation_events (file_batch_id);
+
+            CREATE TABLE IF NOT EXISTS violation_push_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                violation_id INTEGER NOT NULL,
+                platform TEXT NOT NULL,
+                listening_group_id TEXT NOT NULL,
+                push_group_id TEXT NOT NULL,
+                action_status TEXT NOT NULL,
+                error_code TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (violation_id)
+                    REFERENCES violation_events(id)
+                    ON DELETE CASCADE,
+                UNIQUE (violation_id, platform, push_group_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_violation_push_deliveries_status
+            ON violation_push_deliveries (platform, action_status, updated_at);
+
+            CREATE INDEX IF NOT EXISTS idx_violation_push_deliveries_push_group
+            ON violation_push_deliveries (platform, push_group_id, updated_at);
             """
         )
 
@@ -543,6 +572,82 @@ class ChatFilterRepository:
                         f"{cursor.rowcount} rows"
                     )
 
+    def upsert_violation_push_delivery(
+        self,
+        delivery: ViolationPushDelivery,
+    ) -> int:
+        self._root.mkdir(parents=True, exist_ok=True)
+        now = _utc_now()
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO violation_push_deliveries (
+                        violation_id,
+                        platform,
+                        listening_group_id,
+                        push_group_id,
+                        action_status,
+                        error_code,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (violation_id, platform, push_group_id)
+                    DO UPDATE SET
+                        listening_group_id = excluded.listening_group_id,
+                        action_status = excluded.action_status,
+                        error_code = excluded.error_code,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        delivery.violation_id,
+                        delivery.platform,
+                        delivery.listening_group_id,
+                        delivery.push_group_id,
+                        delivery.action_status,
+                        delivery.error_code,
+                        now,
+                        now,
+                    ),
+                )
+                return self._find_violation_push_delivery_id(connection, delivery)
+
+    def list_violation_push_deliveries(
+        self,
+        *,
+        violation_id: int,
+    ) -> list[ViolationPushDelivery]:
+        self._root.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            return [
+                ViolationPushDelivery(
+                    violation_id=int(row[0]),
+                    platform=row[1],
+                    listening_group_id=row[2],
+                    push_group_id=row[3],
+                    action_status=row[4],
+                    error_code=row[5],
+                )
+                for row in connection.execute(
+                    """
+                    SELECT
+                        violation_id,
+                        platform,
+                        listening_group_id,
+                        push_group_id,
+                        action_status,
+                        error_code
+                    FROM violation_push_deliveries
+                    WHERE violation_id = ?
+                    ORDER BY push_group_id
+                    """,
+                    (violation_id,),
+                )
+            ]
+
     def _find_violation_id(
         self,
         connection: sqlite3.Connection,
@@ -577,6 +682,28 @@ class ChatFilterRepository:
         if row:
             return int(row[0])
         raise RuntimeError("violation insert did not return an id")
+
+    def _find_violation_push_delivery_id(
+        self,
+        connection: sqlite3.Connection,
+        delivery: ViolationPushDelivery,
+    ) -> int:
+        cursor = connection.execute(
+            """
+            SELECT id
+            FROM violation_push_deliveries
+            WHERE violation_id = ? AND platform = ? AND push_group_id = ?
+            """,
+            (
+                delivery.violation_id,
+                delivery.platform,
+                delivery.push_group_id,
+            ),
+        )
+        row = cursor.fetchone()
+        if row:
+            return int(row[0])
+        raise RuntimeError("violation push delivery upsert did not return an id")
 
     def _load_groups(self, value: object) -> dict[str, GroupPolicy]:
         if not isinstance(value, dict):

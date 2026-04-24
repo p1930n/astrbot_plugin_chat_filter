@@ -88,3 +88,13 @@ class ViolationEvent:
     action_mute_status: str
     action_recall_status: str
     action_forward_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationPushDelivery:
+    violation_id: int
+    platform: str
+    listening_group_id: str
+    push_group_id: str
+    action_status: str
+    error_code: str = ""

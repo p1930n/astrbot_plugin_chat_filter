@@ -5,6 +5,11 @@ from collections import defaultdict
 from typing import Protocol
 
 from .models import GroupPolicy, PlatformEventSnapshot, PushBinding, RuntimeState
+from .platform_actions import (
+    ForwardMessageNode,
+    PlatformActions,
+    SendForwardMessageRequest,
+)
 from .repository import ChatFilterRepository
 from .settings import (
     MAX_MUTE_DURATION_SECONDS,
@@ -16,6 +21,7 @@ from .settings import (
 
 BIND_LIST_LIMIT = 20
 MAX_QQ_GROUP_ID_LENGTH = 20
+FORWARD_PROBE_TEXT = "phase04b forward probe"
 
 
 class CommandLogger(Protocol):
@@ -273,6 +279,37 @@ class ChatFilterCommandService:
         if len(policies) > BIND_LIST_LIMIT:
             lines.append(f"... and {len(policies) - BIND_LIST_LIMIT} more group(s).")
         return "Chat Filter mute policy list:\n" + "\n".join(lines)
+
+    async def run_forward_probe(
+        self,
+        snapshot: PlatformEventSnapshot,
+        platform_actions: PlatformActions,
+        target_group_id: str,
+    ) -> str:
+        group_id = target_group_id.strip() or snapshot.group_id
+        if not _is_valid_qq_group_id(group_id):
+            return "Usage: .cf forward-probe [group] or /cf forward-probe [group]"
+        if not snapshot.platform:
+            return "Chat Filter forward probe failed: platform is unavailable."
+        if not snapshot.sender_id:
+            return "Chat Filter forward probe failed: sender is unavailable."
+
+        result = await platform_actions.send_forward_message(
+            SendForwardMessageRequest(
+                platform=snapshot.platform,
+                target_group_id=group_id,
+                nodes=(
+                    ForwardMessageNode(
+                        sender_id=snapshot.sender_id,
+                        sender_display_name=snapshot.sender_display_name,
+                        text=FORWARD_PROBE_TEXT,
+                    ),
+                ),
+            )
+        )
+        if result.reason:
+            return f"Chat Filter forward probe: {result.status} ({result.reason})."
+        return f"Chat Filter forward probe: {result.status}."
 
     async def _try_save_state(self) -> bool:
         try:

@@ -14,6 +14,8 @@ UNSUPPORTED_REASON_PHASE_03 = "phase_03_platform_api_unconfirmed"
 UNSUPPORTED_REASON_NO_ACTION_CLIENT = "onebot_action_client_missing"
 FAILED_REASON_ACTION_CALL_FAILED = "onebot_action_call_failed"
 FAILED_REASON_INVALID_ACTION_SCOPE = "invalid_onebot_action_scope"
+FAILED_REASON_INVALID_FORWARD_CONTENT = "invalid_onebot_forward_content"
+DEFAULT_FORWARD_NODE_NAME = "Chat Filter"
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +179,7 @@ class OneBotV11PlatformActions:
         return PlatformActionCapabilities(
             mute_user=has_client,
             recall_message=has_client,
+            send_forward_message=has_client,
         )
 
     def initial_violation_statuses(self, platform: str) -> ViolationActionStatuses:
@@ -228,8 +231,25 @@ class OneBotV11PlatformActions:
         self,
         request: SendForwardMessageRequest,
     ) -> PlatformActionResult:
-        _ = request
-        return PlatformActionResult.unsupported()
+        if self._action_client is None:
+            return PlatformActionResult(
+                status=ACTION_STATUS_UNSUPPORTED,
+                reason=UNSUPPORTED_REASON_NO_ACTION_CLIENT,
+            )
+
+        group_id = _parse_positive_int(request.target_group_id)
+        if group_id is None:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_ACTION_SCOPE)
+
+        messages = _build_forward_messages(request.nodes)
+        if not messages:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_FORWARD_CONTENT)
+
+        return await self._call_action(
+            "send_group_forward_msg",
+            group_id=group_id,
+            messages=messages,
+        )
 
     async def send_text_log(self, request: SendTextLogRequest) -> PlatformActionResult:
         _ = request
@@ -291,3 +311,33 @@ def _parse_positive_int(value: str) -> int | None:
     if parsed <= 0:
         return None
     return parsed
+
+
+def _build_forward_messages(
+    nodes: Sequence[ForwardMessageNode],
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    for node in nodes:
+        user_id = _parse_positive_int(node.sender_id)
+        text = node.text.strip()
+        if user_id is None or not text:
+            return []
+        nickname = node.sender_display_name.strip() or DEFAULT_FORWARD_NODE_NAME
+        messages.append(
+            {
+                "type": "node",
+                "data": {
+                    "user_id": user_id,
+                    "nickname": nickname,
+                    "content": [
+                        {
+                            "type": "text",
+                            "data": {
+                                "text": text,
+                            },
+                        }
+                    ],
+                },
+            }
+        )
+    return messages
