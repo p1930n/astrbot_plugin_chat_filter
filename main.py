@@ -13,6 +13,7 @@ from .astrbot_event_adapter import (
     has_required_message_scope,
 )
 from .command_service import ChatFilterCommandService, load_runtime_state
+from .file_probe_service import FileProbeService
 from .matcher import ChatFilterMatcher
 from .platform_actions import (
     OneBotV11PlatformActions,
@@ -64,6 +65,10 @@ class ChatFilterPlugin(Star):
             self.repository,
             data_root=self.data_root,
             default_report_interval_days=self.settings.default_report_interval_days,
+            logger=logger,
+        )
+        self.file_probe_service = FileProbeService(
+            data_root=self.data_root,
             logger=logger,
         )
 
@@ -201,6 +206,22 @@ class ChatFilterPlugin(Star):
                 snapshot,
                 listening_group_id=listening_group,
                 days=days,
+            )
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("file-probe")
+    async def cf_file_probe(
+        self,
+        event: AstrMessageEvent,
+        target_group: str = "",
+    ):
+        snapshot = dehydrate_event_snapshot(event)
+        yield event.plain_result(
+            await self.file_probe_service.run_file_probe(
+                snapshot,
+                self._platform_actions_for_event(event),
+                target_group,
             )
         )
 

@@ -14,6 +14,7 @@ UNSUPPORTED_REASON_PHASE_03 = "phase_03_platform_api_unconfirmed"
 UNSUPPORTED_REASON_NO_ACTION_CLIENT = "onebot_action_client_missing"
 FAILED_REASON_ACTION_CALL_FAILED = "onebot_action_call_failed"
 FAILED_REASON_INVALID_ACTION_SCOPE = "invalid_onebot_action_scope"
+FAILED_REASON_INVALID_FILE_CONTENT = "invalid_onebot_file_content"
 FAILED_REASON_INVALID_FORWARD_CONTENT = "invalid_onebot_forward_content"
 FAILED_REASON_INVALID_TEXT_LOG_CONTENT = "invalid_onebot_text_log_content"
 DEFAULT_FORWARD_NODE_NAME = "Chat Filter"
@@ -182,6 +183,7 @@ class OneBotV11PlatformActions:
             recall_message=has_client,
             send_forward_message=has_client,
             send_text_log=has_client,
+            send_file=has_client,
         )
 
     def initial_violation_statuses(self, platform: str) -> ViolationActionStatuses:
@@ -275,8 +277,25 @@ class OneBotV11PlatformActions:
         )
 
     async def send_file(self, request: SendFileRequest) -> PlatformActionResult:
-        _ = request
-        return PlatformActionResult.unsupported()
+        if self._action_client is None:
+            return PlatformActionResult(
+                status=ACTION_STATUS_UNSUPPORTED,
+                reason=UNSUPPORTED_REASON_NO_ACTION_CLIENT,
+            )
+
+        group_id = _parse_positive_int(request.target_group_id)
+        display_name = request.display_name.strip()
+        if group_id is None:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_ACTION_SCOPE)
+        if not display_name or not request.file_path.is_file():
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_FILE_CONTENT)
+
+        return await self._call_action(
+            "upload_group_file",
+            group_id=group_id,
+            file=str(request.file_path),
+            name=display_name,
+        )
 
     async def _call_action(self, action: str, **params: Any) -> PlatformActionResult:
         if self._action_client is None:
