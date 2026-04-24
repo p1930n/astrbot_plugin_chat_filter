@@ -75,6 +75,6 @@
 
 ## Commit / Push 记录
 
-- Commit：未执行，等待人工授权。
-- Push：未执行，等待人工授权。
+- Commit: `0f13183 Phase 02 SQLite bindings and violation records`.
+- Push: pushed to `origin/main`.
 
