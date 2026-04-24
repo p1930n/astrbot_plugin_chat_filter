@@ -10,7 +10,7 @@ DEFAULT_MAX_WORD_LENGTH = 64
 DEFAULT_MUTE_DURATION_SECONDS = 600
 MIN_MUTE_DURATION_SECONDS = 10
 MAX_MUTE_DURATION_SECONDS = 2_592_000
-DEFAULT_REPORT_INTERVAL_DAYS = 7
+DEFAULT_REPORT_DAYS = 7
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,8 +26,7 @@ class ChatFilterSettings:
     max_word_length: int = DEFAULT_MAX_WORD_LENGTH
     violation_records_enabled: bool = True
     mute_duration_seconds: int = DEFAULT_MUTE_DURATION_SECONDS
-    report_files_enabled: bool = False
-    default_report_interval_days: int = DEFAULT_REPORT_INTERVAL_DAYS
+    default_report_days: int = DEFAULT_REPORT_DAYS
 
     @classmethod
     def from_config(cls, config: dict[str, Any] | None) -> "ChatFilterSettings":
@@ -66,10 +65,9 @@ class ChatFilterSettings:
             max_word_length=max_word_length,
             violation_records_enabled=_as_bool(data.get("violation_records_enabled"), True),
             mute_duration_seconds=mute_duration_seconds,
-            report_files_enabled=_as_bool(data.get("report_files_enabled"), False),
-            default_report_interval_days=_bounded_int(
-                data.get("default_report_interval_days"),
-                default=DEFAULT_REPORT_INTERVAL_DAYS,
+            default_report_days=_bounded_int(
+                data.get("default_report_days", data.get("default_report_interval_days")),
+                default=DEFAULT_REPORT_DAYS,
                 minimum=1,
                 maximum=366,
             ),

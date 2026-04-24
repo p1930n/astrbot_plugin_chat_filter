@@ -96,7 +96,11 @@ LIMIT 10;
 
 The dry-run report should not change `file_batch_id`.
 
-## Next Phase
+## Scope Update
 
-Phase 05b should confirm the target adapter file-upload API and add a manual
-file-send probe before any periodic scheduler is introduced.
+Phase 05b confirmed the target adapter file-upload API with a manual
+file-send probe.
+
+Scheduled report delivery is skipped in this plugin. The chat filter plugin
+keeps producing local report files; any generic interval-based file delivery
+should be implemented outside this plugin.

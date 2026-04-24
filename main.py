@@ -64,7 +64,7 @@ class ChatFilterPlugin(Star):
         self.report_service = ViolationReportService(
             self.repository,
             data_root=self.data_root,
-            default_report_interval_days=self.settings.default_report_interval_days,
+            default_report_days=self.settings.default_report_days,
             logger=logger,
         )
         self.file_probe_service = FileProbeService(

@@ -45,7 +45,14 @@ to upload it as `chat-filter-file-probe.txt`.
 5. If the adapter rejects the action, the command should return a failed or
    unsupported status without affecting violation recording.
 
+## Live Validation
+
+Accepted on 2026-04-24:
+
+- `/cf file-probe 1098085136` returned `Chat Filter file probe: success.`
+- `/cf probe` returned `send_file=supported`.
+
 ## Hold
 
-Automatic weekly report delivery remains intentionally out of scope until this
-probe succeeds on the real adapter.
+Automatic or scheduled report delivery is intentionally out of scope for this
+plugin. A separate file/log reporter may consume generated report files.

@@ -42,12 +42,12 @@ class ViolationReportService:
         repository: ChatFilterRepository,
         *,
         data_root: str,
-        default_report_interval_days: int,
+        default_report_days: int,
         logger: ReportLogger,
     ) -> None:
         self._repository = repository
         self._data_root = Path(data_root)
-        self._default_report_interval_days = default_report_interval_days
+        self._default_report_days = default_report_days
         self._logger = logger
 
     async def generate_dry_run(
@@ -68,7 +68,7 @@ class ViolationReportService:
 
         report_days = _parse_report_days(
             days,
-            default=self._default_report_interval_days,
+            default=self._default_report_days,
         )
         if report_days is None:
             return "Invalid report days."
