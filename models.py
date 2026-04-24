@@ -35,10 +35,21 @@ class ChatMessage:
     text: str
     message_id: str = ""
     sender_display_name: str = ""
+    group_display_name: str = ""
 
     @property
     def group_key(self) -> str:
         return f"{self.platform}:{self.group_id}"
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformEventSnapshot:
+    platform: str
+    group_id: str
+    sender_id: str
+    message_id: str = ""
+    sender_display_name: str = ""
+    group_display_name: str = ""
 
 
 @dataclass(frozen=True, slots=True)

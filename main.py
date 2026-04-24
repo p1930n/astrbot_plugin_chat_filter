@@ -8,14 +8,32 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
+from .astrbot_event_adapter import (
+    current_group_key_from_event,
+    dehydrate_event_snapshot,
+    dehydrate_group_message,
+    field_state,
+    has_required_message_scope,
+)
 from .matcher import ChatFilterMatcher
-from .models import ChatMessage, GroupPolicy, PushBinding, RuntimeState, ViolationEvent
+from .models import (
+    ChatMessage,
+    GroupPolicy,
+    PushBinding,
+    RuntimeState,
+    ViolationEvent,
+)
+from .platform_actions import (
+    PlatformActions,
+    QQPlatformActions,
+    ViolationActionStatuses,
+    format_platform_probe,
+)
 from .repository import ChatFilterRepository, default_data_root
 from .settings import ChatFilterSettings, validate_single_word
 from .settings import MAX_MUTE_DURATION_SECONDS, MIN_MUTE_DURATION_SECONDS
 
 
-ACTION_NOT_SCHEDULED = "not_scheduled"
 BIND_LIST_LIMIT = 20
 COMMAND_PREFIXES = ("/chatfilter", "/cf", ".cf")
 MAX_QQ_GROUP_ID_LENGTH = 20
@@ -23,7 +41,12 @@ VIOLATION_EXCERPT_LENGTH = 300
 
 
 class ChatFilterPlugin(Star):
-    def __init__(self, context: Context, config: AstrBotConfig | None = None) -> None:
+    def __init__(
+        self,
+        context: Context,
+        config: AstrBotConfig | None = None,
+        platform_actions: PlatformActions | None = None,
+    ) -> None:
         super().__init__(context)
         self.settings = ChatFilterSettings.from_config(config)
         self.repository = ChatFilterRepository(
@@ -32,12 +55,22 @@ class ChatFilterPlugin(Star):
             max_word_length=self.settings.max_word_length,
         )
         self.matcher = ChatFilterMatcher()
+        self.platform_actions = platform_actions or QQPlatformActions()
         self.state = self._load_state()
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
-        message = self._dehydrate_group_message(event)
+        message = dehydrate_group_message(event)
         if self._is_own_command(message.text):
+            return
+        if not has_required_message_scope(message):
+            logger.warning(
+                "Chat Filter skipped message with incomplete event scope: "
+                "platform=%s group_id=%s sender_id=%s",
+                field_state(message.platform),
+                field_state(message.group_id),
+                field_state(message.user_id),
+            )
             return
 
         result = self.matcher.detect(message, self.settings, self.state)
@@ -73,10 +106,14 @@ class ChatFilterPlugin(Star):
             return
 
         if not _is_valid_qq_group_id(listening_group) or not _is_valid_qq_group_id(push_group):
-            yield event.plain_result("Usage: .cf bind [listening group] [push group]")
+            yield event.plain_result(
+                "Usage: .cf bind [listening group] [push group] "
+                "or /cf bind [listening group] [push group]"
+            )
             return
 
-        platform = _safe_value(event.get_platform_name())
+        snapshot = dehydrate_event_snapshot(event)
+        platform = snapshot.platform
         if not platform:
             yield event.plain_result("Chat Filter bind failed: platform is unavailable.")
             return
@@ -85,7 +122,7 @@ class ChatFilterPlugin(Star):
             platform=platform,
             listening_group_id=listening_group,
             push_group_id=push_group,
-            created_by=_safe_value(event.get_sender_id()),
+            created_by=snapshot.sender_id,
         )
         if count is None:
             yield event.plain_result("Chat Filter bind failed.")
@@ -109,7 +146,9 @@ class ChatFilterPlugin(Star):
             return
 
         if not _is_valid_qq_group_id(group_id):
-            yield event.plain_result("Usage: .cf mute [group] [seconds]")
+            yield event.plain_result(
+                "Usage: .cf mute [group] [seconds] or /cf mute [group] [seconds]"
+            )
             return
 
         duration = _parse_mute_duration(seconds)
@@ -117,7 +156,8 @@ class ChatFilterPlugin(Star):
             yield event.plain_result("Invalid mute duration seconds.")
             return
 
-        platform = _safe_value(event.get_platform_name())
+        snapshot = dehydrate_event_snapshot(event)
+        platform = snapshot.platform
         if not platform:
             yield event.plain_result(
                 "Chat Filter mute policy update failed: platform is unavailable."
@@ -128,7 +168,7 @@ class ChatFilterPlugin(Star):
             platform=platform,
             group_id=group_id,
             mute_duration_seconds=duration,
-            updated_by=_safe_value(event.get_sender_id()),
+            updated_by=snapshot.sender_id,
         ):
             yield event.plain_result("Chat Filter mute policy update failed.")
             return
@@ -137,6 +177,13 @@ class ChatFilterPlugin(Star):
             "Chat Filter mute policy updated: "
             f"{group_id} -> {duration} second(s)."
         )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("probe")
+    async def cf_probe(self, event: AstrMessageEvent):
+        snapshot = dehydrate_event_snapshot(event)
+        capabilities = self.platform_actions.probe_capabilities(snapshot.platform)
+        yield event.plain_result(format_platform_probe(snapshot, capabilities))
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("status")
@@ -322,7 +369,7 @@ class ChatFilterPlugin(Star):
             return None
 
     async def _format_push_bindings(self, event: AstrMessageEvent) -> str:
-        platform = _safe_value(event.get_platform_name())
+        platform = dehydrate_event_snapshot(event).platform
         if not platform:
             return "Chat Filter bind list failed: platform is unavailable."
         try:
@@ -367,7 +414,7 @@ class ChatFilterPlugin(Star):
             return False
 
     async def _format_group_mute_policies(self, event: AstrMessageEvent) -> str:
-        platform = _safe_value(event.get_platform_name())
+        platform = dehydrate_event_snapshot(event).platform
         if not platform:
             return "Chat Filter mute policy list failed: platform is unavailable."
         try:
@@ -396,6 +443,7 @@ class ChatFilterPlugin(Star):
     ) -> bool:
         if not matched_word:
             return False
+        action_statuses = self._initial_violation_action_statuses(message)
         violation = ViolationEvent(
             platform=message.platform,
             group_id=message.group_id,
@@ -405,9 +453,9 @@ class ChatFilterPlugin(Star):
             matched_keyword=matched_word,
             matched_content=_matched_excerpt(message.text, matched_word),
             raw_message_digest=_message_digest(message.text),
-            action_mute_status=ACTION_NOT_SCHEDULED,
-            action_recall_status=ACTION_NOT_SCHEDULED,
-            action_forward_status=ACTION_NOT_SCHEDULED,
+            action_mute_status=action_statuses.mute,
+            action_recall_status=action_statuses.recall,
+            action_forward_status=action_statuses.forward,
         )
         try:
             await asyncio.to_thread(self.repository.record_violation, violation)
@@ -416,31 +464,18 @@ class ChatFilterPlugin(Star):
             logger.error("Chat Filter violation record failed: %s", exc)
             return False
 
-    def _dehydrate_group_message(self, event: AstrMessageEvent) -> ChatMessage:
-        platform = _safe_value(event.get_platform_name())
-        group_id = _safe_value(event.get_group_id())
-        user_id = _safe_value(event.get_sender_id())
-        text = _safe_value(getattr(event, "message_str", ""))
-        return ChatMessage(
-            platform=platform,
-            group_id=group_id,
-            user_id=user_id,
-            text=text,
-            message_id=_event_value(event, "get_message_id", "message_id"),
-            sender_display_name=_event_value(
-                event,
-                "get_sender_name",
-                "sender_name",
-                "nickname",
-            ),
-        )
+    def _initial_violation_action_statuses(
+        self,
+        message: ChatMessage,
+    ) -> ViolationActionStatuses:
+        try:
+            return self.platform_actions.initial_violation_statuses(message.platform)
+        except Exception as exc:
+            logger.warning("Chat Filter platform action status probe failed: %s", exc)
+            return ViolationActionStatuses.unsupported()
 
     def _current_group_key(self, event: AstrMessageEvent) -> str | None:
-        platform = _safe_value(event.get_platform_name())
-        group_id = _safe_value(event.get_group_id())
-        if not group_id:
-            return None
-        return f"{platform}:{group_id}"
+        return current_group_key_from_event(event)
 
     def _mutable_group_policy(self, group_key: str) -> GroupPolicy:
         policy = self.state.get_group_policy(group_key)
@@ -454,32 +489,6 @@ class ChatFilterPlugin(Star):
     def _is_own_command(text: str) -> bool:
         stripped = text.lstrip()
         return any(stripped.startswith(prefix) for prefix in COMMAND_PREFIXES)
-
-
-def _safe_value(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value)
-
-
-def _event_value(event: AstrMessageEvent, *names: str) -> str:
-    for name in names:
-        value = getattr(event, name, None)
-        if callable(value):
-            try:
-                value = value()
-            except Exception:
-                continue
-        if value:
-            return _safe_value(value)
-
-    message_obj = getattr(event, "message_obj", None)
-    if message_obj is not None:
-        for name in names:
-            value = getattr(message_obj, name, None)
-            if value:
-                return _safe_value(value)
-    return ""
 
 
 def _is_valid_qq_group_id(value: str) -> bool:
