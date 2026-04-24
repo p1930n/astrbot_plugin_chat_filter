@@ -51,6 +51,7 @@ Accepted on 2026-04-24:
 
 - `/cf file-probe 1098085136` returned `Chat Filter file probe: success.`
 - `/cf probe` returned `send_file=supported`.
+- User confirmed the Phase 05 file probe acceptance result as correct.
 
 ## Hold
 

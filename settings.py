@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -7,17 +8,50 @@ from typing import Any
 DEFAULT_WARNING_MESSAGE = "消息触发聊天过滤策略，请调整后重试。"
 DEFAULT_MAX_WORD_COUNT = 200
 DEFAULT_MAX_WORD_LENGTH = 64
+DEFAULT_MAX_REGEX_RULE_COUNT = 50
+DEFAULT_MAX_REGEX_RULE_LENGTH = 160
 DEFAULT_MUTE_DURATION_SECONDS = 600
 MIN_MUTE_DURATION_SECONDS = 10
 MAX_MUTE_DURATION_SECONDS = 2_592_000
 DEFAULT_REPORT_DAYS = 7
+DEFAULT_GLOBAL_WORDS = (
+    "博彩",
+    "赌博",
+    "现金网",
+    "刷单",
+    "返利",
+    "贷款",
+    "办证",
+    "代开发票",
+    "假证",
+    "外挂",
+    "私服",
+    "辅助脚本",
+    "租号",
+    "卖号",
+    "裸聊",
+    "约炮",
+    "加微信",
+    "加薇",
+    "加v",
+    "广告合作",
+    "群推广",
+    "引流",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RegexRule:
+    pattern: str
+    compiled: re.Pattern[str]
 
 
 @dataclass(frozen=True, slots=True)
 class ChatFilterSettings:
     enabled: bool = True
     default_group_enabled: bool = False
-    global_words: tuple[str, ...] = ()
+    global_words: tuple[str, ...] = DEFAULT_GLOBAL_WORDS
+    global_regex_rules: tuple[RegexRule, ...] = ()
     case_sensitive: bool = False
     stop_event: bool = True
     warn_user: bool = True
@@ -49,15 +83,22 @@ class ChatFilterSettings:
             minimum=MIN_MUTE_DURATION_SECONDS,
             maximum=MAX_MUTE_DURATION_SECONDS,
         )
+        case_sensitive = _as_bool(data.get("case_sensitive"), False)
         return cls(
             enabled=_as_bool(data.get("enabled"), True),
             default_group_enabled=_as_bool(data.get("default_group_enabled"), False),
             global_words=normalize_words(
-                data.get("global_words"),
+                data.get("global_words") or DEFAULT_GLOBAL_WORDS,
                 max_count=max_word_count,
                 max_length=max_word_length,
             ),
-            case_sensitive=_as_bool(data.get("case_sensitive"), False),
+            global_regex_rules=normalize_regex_rules(
+                data.get("global_regex_rules"),
+                case_sensitive=case_sensitive,
+                max_count=DEFAULT_MAX_REGEX_RULE_COUNT,
+                max_length=DEFAULT_MAX_REGEX_RULE_LENGTH,
+            ),
+            case_sensitive=case_sensitive,
             stop_event=_as_bool(data.get("stop_event"), True),
             warn_user=_as_bool(data.get("warn_user"), True),
             warning_message=_safe_message(data.get("warning_message")),
@@ -109,6 +150,57 @@ def validate_single_word(word: str, *, max_length: int) -> str | None:
     if not cleaned or len(cleaned) > max_length:
         return None
     return cleaned
+
+
+def normalize_regex_rules(
+    value: object,
+    *,
+    case_sensitive: bool,
+    max_count: int,
+    max_length: int,
+) -> tuple[RegexRule, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, list | tuple | set):
+        items = list(value)
+    else:
+        return ()
+
+    flags = 0 if case_sensitive else re.IGNORECASE
+    normalized: list[RegexRule] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        pattern = item.strip()
+        if (
+            not pattern
+            or len(pattern) > max_length
+            or pattern in seen
+            or _looks_like_high_risk_regex(pattern)
+        ):
+            continue
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error:
+            continue
+        normalized.append(RegexRule(pattern=pattern, compiled=compiled))
+        seen.add(pattern)
+        if len(normalized) >= max_count:
+            break
+    return tuple(normalized)
+
+
+def _looks_like_high_risk_regex(pattern: str) -> bool:
+    if re.search(r"\([^)]*[+*][^)]*\)[+*{]", pattern):
+        return True
+    if re.search(r"(\.\*){2,}", pattern):
+        return True
+    if re.search(r"\\[1-9]", pattern):
+        return True
+    return False
 
 
 def _as_bool(value: object, default: bool) -> bool:
