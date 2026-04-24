@@ -25,15 +25,23 @@ class ChatFilterMatcher:
         if not group_enabled:
             return MatchResult(matched=False)
 
-        words = self._effective_words(settings.global_words, policy.custom_words, policy.inherit_global)
+        words = self._effective_words(
+            settings.global_words,
+            policy.custom_words,
+            policy.inherit_global,
+        )
         if not words:
             return MatchResult(matched=False)
 
         haystack = message.text if settings.case_sensitive else message.text.casefold()
         needles = words if settings.case_sensitive else tuple(word.casefold() for word in words)
-        for word in needles:
-            if word in haystack:
-                return MatchResult(matched=True, word_count=len(words))
+        for original_word, needle in zip(words, needles, strict=True):
+            if needle in haystack:
+                return MatchResult(
+                    matched=True,
+                    word_count=len(words),
+                    matched_word=original_word,
+                )
         return MatchResult(matched=False, word_count=len(words))
 
     @staticmethod
@@ -45,4 +53,3 @@ class ChatFilterMatcher:
         if not inherit_global:
             return custom_words
         return global_words + custom_words
-

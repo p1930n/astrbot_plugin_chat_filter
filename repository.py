@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .models import GroupPolicy, RuntimeState
+from .models import GroupPolicy, PushBinding, RuntimeState, ViolationEvent
 from .settings import normalize_words
 
 
@@ -71,6 +71,90 @@ class ChatFilterRepository:
                     REFERENCES group_policies(group_key)
                     ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS group_push_bindings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                listening_group_id TEXT NOT NULL,
+                push_group_id TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE (platform, listening_group_id, push_group_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_group_push_bindings_push_group
+            ON group_push_bindings (platform, push_group_id);
+
+            CREATE TABLE IF NOT EXISTS group_report_policies (
+                platform TEXT NOT NULL,
+                listening_group_id TEXT NOT NULL,
+                interval_value INTEGER NOT NULL,
+                interval_unit TEXT NOT NULL,
+                next_run_at TEXT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (platform, listening_group_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS violation_batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                listening_group_id TEXT NOT NULL,
+                push_group_id TEXT NOT NULL,
+                window_start TEXT NOT NULL,
+                window_end TEXT NOT NULL,
+                record_count INTEGER NOT NULL DEFAULT 0,
+                file_name TEXT NOT NULL DEFAULT '',
+                send_status TEXT NOT NULL,
+                error_code TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                sent_at TEXT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_violation_batches_window
+            ON violation_batches (
+                platform,
+                listening_group_id,
+                push_group_id,
+                window_start,
+                window_end
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_violation_batches_send_status
+            ON violation_batches (send_status, created_at);
+
+            CREATE TABLE IF NOT EXISTS violation_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                group_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                sender_display_name_snapshot TEXT NOT NULL DEFAULT '',
+                message_id TEXT NOT NULL DEFAULT '',
+                matched_keyword TEXT NOT NULL,
+                matched_content TEXT NOT NULL,
+                raw_message_digest TEXT NOT NULL,
+                action_mute_status TEXT NOT NULL,
+                action_recall_status TEXT NOT NULL,
+                action_forward_status TEXT NOT NULL,
+                file_batch_id INTEGER NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (file_batch_id)
+                    REFERENCES violation_batches(id)
+                    ON DELETE SET NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_violation_events_message
+            ON violation_events (platform, group_id, message_id)
+            WHERE message_id <> '';
+
+            CREATE INDEX IF NOT EXISTS idx_violation_events_group_time
+            ON violation_events (platform, group_id, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_violation_events_file_batch
+            ON violation_events (file_batch_id);
             """
         )
 
@@ -190,6 +274,171 @@ class ChatFilterRepository:
                         for position, word in enumerate(policy.custom_words)
                     ],
                 )
+
+    def add_push_binding(
+        self,
+        *,
+        platform: str,
+        listening_group_id: str,
+        push_group_id: str,
+        created_by: str,
+    ) -> int:
+        self._root.mkdir(parents=True, exist_ok=True)
+        now = _utc_now()
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            with connection:
+                connection.execute(
+                    """
+                    INSERT INTO group_push_bindings (
+                        platform,
+                        listening_group_id,
+                        push_group_id,
+                        enabled,
+                        created_by,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, 1, ?, ?, ?)
+                    ON CONFLICT (platform, listening_group_id, push_group_id)
+                    DO UPDATE SET
+                        enabled = 1,
+                        created_by = excluded.created_by,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        platform,
+                        listening_group_id,
+                        push_group_id,
+                        created_by,
+                        now,
+                        now,
+                    ),
+                )
+                return self.count_push_bindings(
+                    connection,
+                    platform=platform,
+                    listening_group_id=listening_group_id,
+                )
+
+    def list_push_bindings(self, *, platform: str) -> list[PushBinding]:
+        self._root.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            return [
+                PushBinding(
+                    platform=row[0],
+                    listening_group_id=row[1],
+                    push_group_id=row[2],
+                    enabled=bool(row[3]),
+                )
+                for row in connection.execute(
+                    """
+                    SELECT platform, listening_group_id, push_group_id, enabled
+                    FROM group_push_bindings
+                    WHERE platform = ? AND enabled = 1
+                    ORDER BY listening_group_id, push_group_id
+                    """,
+                    (platform,),
+                )
+            ]
+
+    def count_push_bindings(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        platform: str,
+        listening_group_id: str,
+    ) -> int:
+        cursor = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM group_push_bindings
+            WHERE platform = ? AND listening_group_id = ? AND enabled = 1
+            """,
+            (platform, listening_group_id),
+        )
+        return int(cursor.fetchone()[0])
+
+    def record_violation(self, violation: ViolationEvent) -> int:
+        self._root.mkdir(parents=True, exist_ok=True)
+        now = _utc_now()
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            with connection:
+                cursor = connection.execute(
+                    """
+                    INSERT OR IGNORE INTO violation_events (
+                        platform,
+                        group_id,
+                        user_id,
+                        sender_display_name_snapshot,
+                        message_id,
+                        matched_keyword,
+                        matched_content,
+                        raw_message_digest,
+                        action_mute_status,
+                        action_recall_status,
+                        action_forward_status,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        violation.platform,
+                        violation.group_id,
+                        violation.user_id,
+                        violation.sender_display_name_snapshot,
+                        violation.message_id,
+                        violation.matched_keyword,
+                        violation.matched_content,
+                        violation.raw_message_digest,
+                        violation.action_mute_status,
+                        violation.action_recall_status,
+                        violation.action_forward_status,
+                        now,
+                        now,
+                    ),
+                )
+                if cursor.lastrowid:
+                    return int(cursor.lastrowid)
+                return self._find_violation_id(connection, violation)
+
+    def _find_violation_id(
+        self,
+        connection: sqlite3.Connection,
+        violation: ViolationEvent,
+    ) -> int:
+        if violation.message_id:
+            cursor = connection.execute(
+                """
+                SELECT id
+                FROM violation_events
+                WHERE platform = ? AND group_id = ? AND message_id = ?
+                """,
+                (violation.platform, violation.group_id, violation.message_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                return int(row[0])
+
+        cursor = connection.execute(
+            """
+            SELECT id
+            FROM violation_events
+            WHERE platform = ?
+                AND group_id = ?
+                AND raw_message_digest = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (violation.platform, violation.group_id, violation.raw_message_digest),
+        )
+        row = cursor.fetchone()
+        if row:
+            return int(row[0])
+        raise RuntimeError("violation insert did not return an id")
 
     def _load_groups(self, value: object) -> dict[str, GroupPolicy]:
         if not isinstance(value, dict):

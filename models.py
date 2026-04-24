@@ -33,6 +33,8 @@ class ChatMessage:
     group_id: str
     user_id: str
     text: str
+    message_id: str = ""
+    sender_display_name: str = ""
 
     @property
     def group_key(self) -> str:
@@ -43,4 +45,27 @@ class ChatMessage:
 class MatchResult:
     matched: bool
     word_count: int = 0
+    matched_word: str | None = None
 
+
+@dataclass(frozen=True, slots=True)
+class PushBinding:
+    platform: str
+    listening_group_id: str
+    push_group_id: str
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationEvent:
+    platform: str
+    group_id: str
+    user_id: str
+    sender_display_name_snapshot: str
+    message_id: str
+    matched_keyword: str
+    matched_content: str
+    raw_message_digest: str
+    action_mute_status: str
+    action_recall_status: str
+    action_forward_status: str

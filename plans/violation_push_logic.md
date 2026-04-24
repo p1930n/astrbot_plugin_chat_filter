@@ -204,9 +204,10 @@
 - 历史文件应有保留周期和清理策略；发送成功后的本地临时文件应及时删除。
 - 错误响应面向群聊时应简化为业务结果，不暴露内部路径、供应商错误详情或数据库结构。
 
-## 实现边界
+## 实现边界与阶段状态
 
-- 本计划不修改 `repository.py`、`models.py`、`main.py`、`settings.py`、`_conf_schema.json`。
+- 本计划文件本身不直接限定实现文件；阶段 2 已开始把多推送群绑定、SQLite 表结构、WebUI 参数和命中入库能力落到 `repository.py`、`models.py`、`main.py`、`settings.py`、`_conf_schema.json`。
+- 阶段 2 只实现绑定关系、表结构、配置参数和命中记录入库；禁言、撤回、合并转发、单独日志消息和周期文件发送仍待后续阶段按官方 API 确认后实现。
 - 后续实现涉及持久化表结构时，需要先按 persistence workflow 确认现有 repository 和 model 设计。
 - 后续实现涉及 AstrBot 入口、事件对象、权限和响应装配时，需要先按 astrbot-integration workflow 确认官方 API。
 - 后续实现涉及后台周期任务、平台异步 IO、重试、限流和热重载释放时，需要先按 async-runtime workflow 设计。
