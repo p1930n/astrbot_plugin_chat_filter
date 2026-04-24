@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Protocol
 
 from .models import ChatMessage, PushBinding, ViolationPushDelivery
@@ -13,6 +14,7 @@ from .platform_actions import (
     PlatformActions,
     RecallMessageRequest,
     SendForwardMessageRequest,
+    SendTextLogRequest,
 )
 from .repository import ChatFilterRepository, ViolationActionName
 
@@ -25,7 +27,11 @@ REASON_NO_PUSH_BINDINGS = "no_push_bindings"
 REASON_PUSH_BINDING_LOOKUP_FAILED = "push_binding_lookup_failed"
 REASON_FORWARD_ACTION_FAILED = "forward_action_failed"
 REASON_FORWARD_ACTION_TIMEOUT = "forward_action_timeout"
+REASON_TEXT_LOG_ACTION_FAILED = "text_log_action_failed"
+REASON_TEXT_LOG_ACTION_TIMEOUT = "text_log_action_timeout"
 FORWARD_ACTION_TIMEOUT_SECONDS = 10.0
+TEXT_LOG_ACTION_TIMEOUT_SECONDS = 10.0
+TEXT_LOG_DISPLAY_NAME_MAX_LENGTH = 80
 
 
 class ActionLogger(Protocol):
@@ -70,6 +76,8 @@ class ViolationActionExecutor:
             violation_id=violation_id,
             message=message,
             platform_actions=platform_actions,
+            mute_result=mute_result,
+            recall_result=recall_result,
         )
         await self._try_update_status(
             violation_id=violation_id,
@@ -134,6 +142,8 @@ class ViolationActionExecutor:
         violation_id: int,
         message: ChatMessage,
         platform_actions: PlatformActions,
+        mute_result: PlatformActionResult,
+        recall_result: PlatformActionResult,
     ) -> PlatformActionResult:
         bindings = await self._push_bindings_for_group(message)
         if bindings is None:
@@ -171,6 +181,22 @@ class ViolationActionExecutor:
                     error_code=result.reason,
                 )
             )
+            text_log_result = await self._send_text_log(
+                message=message,
+                platform_actions=platform_actions,
+                push_group_id=binding.push_group_id,
+                mute_result=mute_result,
+                recall_result=recall_result,
+                forward_result=result,
+            )
+            if text_log_result.status != "success":
+                self._logger.error(
+                    "Chat Filter text log delivery failed: "
+                    "push_group_id=%s status=%s reason=%s",
+                    binding.push_group_id,
+                    text_log_result.status,
+                    text_log_result.reason,
+                )
 
         return PlatformActionResult(status=_aggregate_forward_status(results))
 
@@ -223,6 +249,40 @@ class ViolationActionExecutor:
             )
             return PlatformActionResult.failed(REASON_FORWARD_ACTION_FAILED)
 
+    async def _send_text_log(
+        self,
+        *,
+        message: ChatMessage,
+        platform_actions: PlatformActions,
+        push_group_id: str,
+        mute_result: PlatformActionResult,
+        recall_result: PlatformActionResult,
+        forward_result: PlatformActionResult,
+    ) -> PlatformActionResult:
+        request = SendTextLogRequest(
+            platform=message.platform,
+            target_group_id=push_group_id,
+            text=_format_text_log(
+                message=message,
+                mute_result=mute_result,
+                recall_result=recall_result,
+                forward_result=forward_result,
+            ),
+        )
+        try:
+            return await asyncio.wait_for(
+                platform_actions.send_text_log(request),
+                timeout=TEXT_LOG_ACTION_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            return PlatformActionResult.failed(REASON_TEXT_LOG_ACTION_TIMEOUT)
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter text log send failed: error_type=%s",
+                type(exc).__name__,
+            )
+            return PlatformActionResult.failed(REASON_TEXT_LOG_ACTION_FAILED)
+
     async def _try_record_push_delivery(
         self,
         delivery: ViolationPushDelivery,
@@ -271,3 +331,33 @@ def _aggregate_forward_status(results: list[PlatformActionResult]) -> ActionStat
     if all(result.status == ACTION_STATUS_UNSUPPORTED for result in results):
         return ACTION_STATUS_UNSUPPORTED
     return "failed"
+
+
+def _format_text_log(
+    *,
+    message: ChatMessage,
+    mute_result: PlatformActionResult,
+    recall_result: PlatformActionResult,
+    forward_result: PlatformActionResult,
+) -> str:
+    sender_name = _sanitize_text_log_value(message.sender_display_name) or "unknown"
+    handled_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return "\n".join(
+        [
+            "Chat Filter violation log",
+            f"platform={message.platform}",
+            f"listening_group={message.group_id}",
+            f"sender={sender_name} ({message.user_id})",
+            f"mute={mute_result.status}",
+            f"recall={recall_result.status}",
+            f"forward={forward_result.status}",
+            f"handled_at={handled_at}",
+        ]
+    )
+
+
+def _sanitize_text_log_value(value: str) -> str:
+    cleaned = " ".join(value.strip().split())
+    if len(cleaned) <= TEXT_LOG_DISPLAY_NAME_MAX_LENGTH:
+        return cleaned
+    return cleaned[: TEXT_LOG_DISPLAY_NAME_MAX_LENGTH - 3] + "..."

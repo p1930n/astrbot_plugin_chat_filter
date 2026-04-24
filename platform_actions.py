@@ -15,6 +15,7 @@ UNSUPPORTED_REASON_NO_ACTION_CLIENT = "onebot_action_client_missing"
 FAILED_REASON_ACTION_CALL_FAILED = "onebot_action_call_failed"
 FAILED_REASON_INVALID_ACTION_SCOPE = "invalid_onebot_action_scope"
 FAILED_REASON_INVALID_FORWARD_CONTENT = "invalid_onebot_forward_content"
+FAILED_REASON_INVALID_TEXT_LOG_CONTENT = "invalid_onebot_text_log_content"
 DEFAULT_FORWARD_NODE_NAME = "Chat Filter"
 
 
@@ -180,6 +181,7 @@ class OneBotV11PlatformActions:
             mute_user=has_client,
             recall_message=has_client,
             send_forward_message=has_client,
+            send_text_log=has_client,
         )
 
     def initial_violation_statuses(self, platform: str) -> ViolationActionStatuses:
@@ -252,8 +254,25 @@ class OneBotV11PlatformActions:
         )
 
     async def send_text_log(self, request: SendTextLogRequest) -> PlatformActionResult:
-        _ = request
-        return PlatformActionResult.unsupported()
+        if self._action_client is None:
+            return PlatformActionResult(
+                status=ACTION_STATUS_UNSUPPORTED,
+                reason=UNSUPPORTED_REASON_NO_ACTION_CLIENT,
+            )
+
+        group_id = _parse_positive_int(request.target_group_id)
+        text = request.text.strip()
+        if group_id is None:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_ACTION_SCOPE)
+        if not text:
+            return PlatformActionResult.failed(FAILED_REASON_INVALID_TEXT_LOG_CONTENT)
+
+        return await self._call_action(
+            "send_group_msg",
+            group_id=group_id,
+            message=text,
+            auto_escape=True,
+        )
 
     async def send_file(self, request: SendFileRequest) -> PlatformActionResult:
         _ = request
