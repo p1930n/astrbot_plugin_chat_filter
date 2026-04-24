@@ -340,18 +340,18 @@ def _format_text_log(
     recall_result: PlatformActionResult,
     forward_result: PlatformActionResult,
 ) -> str:
-    sender_name = _sanitize_text_log_value(message.sender_display_name) or "unknown"
+    sender_name = _sanitize_text_log_value(message.sender_display_name) or "未知"
     handled_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return "\n".join(
         [
-            "Chat Filter violation log",
-            f"platform={message.platform}",
-            f"listening_group={message.group_id}",
-            f"sender={sender_name} ({message.user_id})",
-            f"mute={mute_result.status}",
-            f"recall={recall_result.status}",
-            f"forward={forward_result.status}",
-            f"handled_at={handled_at}",
+            "聊天过滤命中日志",
+            f"平台：{message.platform}",
+            f"监听群：{message.group_id}",
+            f"发送者：{sender_name}（{message.user_id}）",
+            f"禁言状态：{mute_result.status}",
+            f"撤回状态：{recall_result.status}",
+            f"转发状态：{forward_result.status}",
+            f"处理时间：{handled_at}",
         ]
     )
 

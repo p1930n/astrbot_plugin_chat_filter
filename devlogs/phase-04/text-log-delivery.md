@@ -90,15 +90,19 @@ Steps:
 Expected text-log shape:
 
 ```text
-Chat Filter violation log
-platform=aiocqhttp
-listening_group=<group id>
-sender=<display name> (<user id>)
-mute=<status>
-recall=<status>
-forward=<status>
-handled_at=<utc timestamp>
+聊天过滤命中日志
+平台：aiocqhttp
+监听群：<group id>
+发送者：<display name>（<user id>）
+禁言状态：<status>
+撤回状态：<status>
+转发状态：<status>
+处理时间：<utc timestamp>
 ```
+
+Status values stay as internal ASCII codes such as `success`, `failed`,
+`unsupported`, and `not_scheduled` so live debugging can still be matched
+directly with SQLite rows and sanitized runtime logs.
 
 SQLite checks stay the same as Phase 04b:
 
@@ -132,4 +136,3 @@ Automated validation should cover:
 - text log containing no triggering message text or matched keyword;
 - text-log failure not changing forward status;
 - existing no-binding behavior remaining `not_scheduled`.
-
