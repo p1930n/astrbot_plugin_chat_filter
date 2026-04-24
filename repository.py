@@ -15,6 +15,7 @@ from .models import (
     RuntimeState,
     ViolationEvent,
     ViolationPushDelivery,
+    ViolationReportRecord,
 )
 from .settings import normalize_words
 
@@ -674,6 +675,59 @@ class ChatFilterRepository:
                     ORDER BY push_group_id
                     """,
                     (violation_id,),
+                )
+            ]
+
+    def list_unbatched_violation_report_records(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        window_start: str,
+        window_end: str,
+        limit: int,
+    ) -> list[ViolationReportRecord]:
+        self._root.mkdir(parents=True, exist_ok=True)
+        with closing(self._connect()) as connection:
+            self._ensure_schema(connection)
+            return [
+                ViolationReportRecord(
+                    violation_id=int(row[0]),
+                    created_at=row[1],
+                    platform=row[2],
+                    group_id=row[3],
+                    user_id=row[4],
+                    sender_display_name_snapshot=row[5],
+                    matched_keyword=row[6],
+                    matched_content=row[7],
+                    action_mute_status=row[8],
+                    action_recall_status=row[9],
+                    action_forward_status=row[10],
+                )
+                for row in connection.execute(
+                    """
+                    SELECT
+                        id,
+                        created_at,
+                        platform,
+                        group_id,
+                        user_id,
+                        sender_display_name_snapshot,
+                        matched_keyword,
+                        matched_content,
+                        action_mute_status,
+                        action_recall_status,
+                        action_forward_status
+                    FROM violation_events
+                    WHERE platform = ?
+                        AND group_id = ?
+                        AND created_at >= ?
+                        AND created_at < ?
+                        AND file_batch_id IS NULL
+                    ORDER BY created_at ASC, id ASC
+                    LIMIT ?
+                    """,
+                    (platform, group_id, window_start, window_end, limit),
                 )
             ]
 

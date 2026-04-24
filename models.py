@@ -91,6 +91,21 @@ class ViolationEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class ViolationReportRecord:
+    violation_id: int
+    created_at: str
+    platform: str
+    group_id: str
+    user_id: str
+    sender_display_name_snapshot: str
+    matched_keyword: str
+    matched_content: str
+    action_mute_status: str
+    action_recall_status: str
+    action_forward_status: str
+
+
+@dataclass(frozen=True, slots=True)
 class ViolationPushDelivery:
     violation_id: int
     platform: str

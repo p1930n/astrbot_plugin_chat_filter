@@ -20,6 +20,7 @@ from .platform_actions import (
     QQPlatformActions,
     format_platform_probe,
 )
+from .report_service import ViolationReportService
 from .repository import ChatFilterRepository, default_data_root
 from .settings import ChatFilterSettings
 from .violation_actions import ViolationActionExecutor
@@ -38,8 +39,9 @@ class ChatFilterPlugin(Star):
     ) -> None:
         super().__init__(context)
         self.settings = ChatFilterSettings.from_config(config)
+        self.data_root = default_data_root()
         self.repository = ChatFilterRepository(
-            default_data_root(),
+            self.data_root,
             max_word_count=self.settings.max_word_count,
             max_word_length=self.settings.max_word_length,
         )
@@ -57,6 +59,12 @@ class ChatFilterPlugin(Star):
             self.state,
             self.settings,
             logger,
+        )
+        self.report_service = ViolationReportService(
+            self.repository,
+            data_root=self.data_root,
+            default_report_interval_days=self.settings.default_report_interval_days,
+            logger=logger,
         )
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
@@ -176,6 +184,23 @@ class ChatFilterPlugin(Star):
                 snapshot,
                 self._platform_actions_for_event(event),
                 target_group,
+            )
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("report-dry-run")
+    async def cf_report_dry_run(
+        self,
+        event: AstrMessageEvent,
+        listening_group: str = "",
+        days: str = "",
+    ):
+        snapshot = dehydrate_event_snapshot(event)
+        yield event.plain_result(
+            await self.report_service.generate_dry_run(
+                snapshot,
+                listening_group_id=listening_group,
+                days=days,
             )
         )
 
