@@ -23,7 +23,7 @@ from .platform_actions import (
 )
 from .report_service import ViolationReportService
 from .repository import ChatFilterRepository, default_data_root
-from .rule_snapshot import LegacyRuleSeed, RuleSnapshot
+from .rule_snapshot import RuleSnapshot
 from .settings import ChatFilterSettings
 from .violation_actions import ViolationActionExecutor
 from .violation_records import ViolationRecorder
@@ -41,17 +41,11 @@ class ChatFilterPlugin(Star):
     ) -> None:
         super().__init__(context)
         self.settings = ChatFilterSettings.from_config(config)
-        legacy_rule_seed = LegacyRuleSeed.from_config(config, settings=self.settings)
         self.data_root = default_data_root()
         self.repository = ChatFilterRepository(
             self.data_root,
             max_word_count=self.settings.max_word_count,
             max_word_length=self.settings.max_word_length,
-        )
-        self.repository.import_legacy_global_rules_once(
-            legacy_rule_seed.words,
-            legacy_rule_seed.regex_patterns,
-            legacy_rule_seed.source_hash,
         )
         self.rule_snapshot = RuleSnapshot.from_repository(
             self.repository,

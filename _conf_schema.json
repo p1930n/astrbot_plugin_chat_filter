@@ -9,16 +9,6 @@
     "type": "bool",
     "default": false
   },
-  "global_words": {
-    "description": "兼容迁移字段：旧配置中的全局普通违禁词会在启动时导入 SQLite 词库；导入后请不要继续在 WebUI 中维护",
-    "type": "list",
-    "default": []
-  },
-  "global_regex_rules": {
-    "description": "兼容迁移字段：旧配置中的全局正则规则会在启动时导入 SQLite 词库；导入后请不要继续在 WebUI 中维护，不会通过 QQ 命令回显具体规则",
-    "type": "list",
-    "default": []
-  },
   "case_sensitive": {
     "description": "区分大小写",
     "type": "bool",

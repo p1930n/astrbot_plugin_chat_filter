@@ -11,49 +11,11 @@ if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
 from astrbot_plugin_chat_filter.rule_models import GlobalRule, RuleType  # noqa: E402
-from astrbot_plugin_chat_filter.rule_snapshot import (  # noqa: E402
-    LegacyRuleSeed,
-    RuleSnapshot,
-)
+from astrbot_plugin_chat_filter.rule_snapshot import RuleSnapshot  # noqa: E402
 from astrbot_plugin_chat_filter.settings import ChatFilterSettings  # noqa: E402
 
 
 class RuleSnapshotTests(unittest.TestCase):
-    def test_legacy_seed_normalizes_old_config_fields(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {
-                "case_sensitive": False,
-                "max_word_count": 2,
-                "max_word_length": 5,
-            }
-        )
-
-        seed = LegacyRuleSeed.from_config(
-            {
-                "global_words": [" alpha ", "toolong", "alpha", 123, "beta"],
-                "global_regex_rules": [
-                    "^admin$",
-                    "[",
-                    "(a+)+$",
-                    "^root$",
-                    "^admin$",
-                ],
-            },
-            settings=settings,
-        )
-
-        self.assertFalse(hasattr(settings, "global_words"))
-        self.assertFalse(hasattr(settings, "global_regex_rules"))
-        self.assertEqual(seed.words, ("alpha", "beta"))
-        self.assertEqual(seed.regex_patterns, ("^admin$", "^root$"))
-        self.assertTrue(
-            all(isinstance(pattern, str) for pattern in seed.regex_patterns)
-        )
-        self.assertEqual(
-            seed.source_hash,
-            LegacyRuleSeed(seed.words, seed.regex_patterns).source_hash,
-        )
-
     def test_snapshot_loads_enabled_global_rules_and_compiles_regex(self) -> None:
         settings = ChatFilterSettings.from_config(
             {
