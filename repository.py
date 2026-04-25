@@ -9,9 +9,11 @@ from .repository_base import (
 )
 from .repository_mute import MutePolicyRepositoryMixin
 from .repository_push_bindings import PushBindingRepositoryMixin
+from .repository_rules import RuleRepositoryMixin
 from .repository_runtime_state import RuntimeStateRepositoryMixin
 from .repository_schema import RepositorySchemaError
 from .repository_violations import ViolationActionName, ViolationRepositoryMixin
+from .rule_models import GlobalRule, RuleType
 
 
 class ChatFilterRepository(
@@ -19,6 +21,7 @@ class ChatFilterRepository(
     PushBindingRepositoryMixin,
     MutePolicyRepositoryMixin,
     ViolationRepositoryMixin,
+    RuleRepositoryMixin,
     RepositoryBase,
 ):
     pass
@@ -28,7 +31,9 @@ __all__ = [
     "ChatFilterRepository",
     "DATABASE_FILENAME",
     "GLOBAL_ENABLED_KEY",
+    "GlobalRule",
     "RepositorySchemaError",
+    "RuleType",
     "STATE_FILENAME",
     "ViolationActionName",
     "default_data_root",

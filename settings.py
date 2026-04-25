@@ -34,8 +34,6 @@ class RegexRule:
 class ChatFilterSettings:
     enabled: bool = True
     default_group_enabled: bool = False
-    global_words: tuple[str, ...] = DEFAULT_GLOBAL_WORDS
-    global_regex_rules: tuple[RegexRule, ...] = ()
     case_sensitive: bool = False
     stop_event: bool = True
     warn_user: bool = True
@@ -73,25 +71,6 @@ class ChatFilterSettings:
         return cls(
             enabled=_as_bool(data.get("enabled"), True),
             default_group_enabled=_as_bool(data.get("default_group_enabled"), False),
-            global_words=normalize_words(
-                _config_list_or_default(
-                    data,
-                    key="global_words",
-                    default=DEFAULT_GLOBAL_WORDS,
-                ),
-                max_count=max_word_count,
-                max_length=max_word_length,
-            ),
-            global_regex_rules=normalize_regex_rules(
-                _config_list_or_default(
-                    data,
-                    key="global_regex_rules",
-                    default=DEFAULT_GLOBAL_REGEX_RULES,
-                ),
-                case_sensitive=case_sensitive,
-                max_count=DEFAULT_MAX_REGEX_RULE_COUNT,
-                max_length=DEFAULT_MAX_REGEX_RULE_LENGTH,
-            ),
             case_sensitive=case_sensitive,
             stop_event=_as_bool(data.get("stop_event"), True),
             warn_user=_as_bool(data.get("warn_user"), True),

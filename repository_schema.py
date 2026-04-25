@@ -3,14 +3,14 @@ from __future__ import annotations
 import sqlite3
 
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 class RepositorySchemaError(RuntimeError):
     """Raised when the persisted SQLite schema cannot be used safely."""
 
 
-REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+V1_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     "runtime_state": ("key", "bool_value", "updated_at"),
     "group_policies": ("group_key", "enabled", "inherit_global", "updated_at"),
     "group_words": ("group_key", "word", "position", "created_at"),
@@ -105,6 +105,21 @@ REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
+REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    **V1_REQUIRED_TABLE_COLUMNS,
+    "global_rules": (
+        "id",
+        "rule_type",
+        "pattern",
+        "position",
+        "enabled",
+        "source",
+        "created_at",
+    ),
+    "legacy_import_meta": ("key", "value", "updated_at"),
+}
+
+
 def ensure_schema(connection: sqlite3.Connection) -> None:
     current_version = _schema_version(connection)
     if current_version > CURRENT_SCHEMA_VERSION:
@@ -113,14 +128,19 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
             f"{current_version} > {CURRENT_SCHEMA_VERSION}"
         )
 
-    if current_version > 0:
-        _validate_required_schema(connection)
+    if current_version == CURRENT_SCHEMA_VERSION:
+        _validate_required_schema(connection, REQUIRED_TABLE_COLUMNS)
+        _create_schema_objects(connection)
+        _validate_required_schema(connection, REQUIRED_TABLE_COLUMNS)
+        return
+
+    if current_version == 1:
+        _validate_required_schema(connection, V1_REQUIRED_TABLE_COLUMNS)
 
     _create_schema_objects(connection)
-    _validate_required_schema(connection)
+    _validate_required_schema(connection, REQUIRED_TABLE_COLUMNS)
 
-    if current_version == 0:
-        connection.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
+    connection.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 
 def _create_schema_objects(connection: sqlite3.Connection) -> None:
@@ -291,6 +311,27 @@ def _create_schema_objects(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_violation_push_deliveries_push_group
         ON violation_push_deliveries (platform, push_group_id, updated_at);
+
+        CREATE TABLE IF NOT EXISTS global_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rule_type TEXT NOT NULL
+                CHECK (rule_type IN ('word', 'regex')),
+            pattern TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            source TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            UNIQUE (rule_type, pattern)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_global_rules_enabled_position
+        ON global_rules (enabled, position, id);
+
+        CREATE TABLE IF NOT EXISTS legacy_import_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
         """
     )
 
@@ -314,9 +355,12 @@ def _user_table_names(connection: sqlite3.Connection) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
-def _validate_required_schema(connection: sqlite3.Connection) -> None:
+def _validate_required_schema(
+    connection: sqlite3.Connection,
+    required_table_columns: dict[str, tuple[str, ...]],
+) -> None:
     table_names = _user_table_names(connection)
-    missing_tables = sorted(set(REQUIRED_TABLE_COLUMNS) - table_names)
+    missing_tables = sorted(set(required_table_columns) - table_names)
     if missing_tables:
         raise RepositorySchemaError(
             "chat filter database schema is missing required table(s): "
@@ -324,7 +368,7 @@ def _validate_required_schema(connection: sqlite3.Connection) -> None:
         )
 
     missing_columns: list[str] = []
-    for table_name, required_columns in REQUIRED_TABLE_COLUMNS.items():
+    for table_name, required_columns in required_table_columns.items():
         actual_columns = _table_columns(connection, table_name)
         for column_name in required_columns:
             if column_name not in actual_columns:

@@ -11,6 +11,7 @@ from .platform_actions import (
     SendForwardMessageRequest,
 )
 from .repository import ChatFilterRepository, RepositorySchemaError
+from .rule_snapshot import RuleSnapshot
 from .settings import (
     MAX_MUTE_DURATION_SECONDS,
     MAX_MUTE_ESCALATION_MULTIPLIER,
@@ -59,17 +60,19 @@ class ChatFilterCommandService:
         repository: ChatFilterRepository,
         state: RuntimeState,
         settings: ChatFilterSettings,
+        rule_snapshot: RuleSnapshot,
         logger: CommandLogger,
     ) -> None:
         self._repository = repository
         self._state = state
         self._settings = settings
+        self._rule_snapshot = rule_snapshot
         self._logger = logger
 
     def format_status(self) -> str:
         enabled = self._state.effective_global_enabled(self._settings.enabled)
         group_count = len(self._state.groups)
-        global_word_count = len(self._settings.global_words)
+        global_word_count = self._rule_snapshot.global_word_count
         return (
             "Chat Filter status: "
             f"global={'enabled' if enabled else 'disabled'}, "

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .models import ChatMessage, MatchResult, RuntimeState
+from .rule_snapshot import RuleSnapshot
 from .settings import ChatFilterSettings, RegexRule
 
 
@@ -14,6 +15,7 @@ class ChatFilterMatcher:
         message: ChatMessage,
         settings: ChatFilterSettings,
         state: RuntimeState,
+        rule_snapshot: RuleSnapshot,
     ) -> MatchResult:
         if not message.text:
             return MatchResult(matched=False)
@@ -30,17 +32,18 @@ class ChatFilterMatcher:
             return MatchResult(matched=False)
 
         words = self._effective_words(
-            settings.global_words,
+            rule_snapshot.global_words,
             policy.custom_words,
             policy.inherit_global,
         )
-        regex_rules = settings.global_regex_rules if policy.inherit_global else ()
+        regex_rules = rule_snapshot.global_regex_rules if policy.inherit_global else ()
         rule_count = len(words) + len(regex_rules)
         if not words and not regex_rules:
             return MatchResult(matched=False)
 
-        haystack = message.text if settings.case_sensitive else message.text.casefold()
-        needles = words if settings.case_sensitive else tuple(word.casefold() for word in words)
+        case_sensitive = rule_snapshot.case_sensitive
+        haystack = message.text if case_sensitive else message.text.casefold()
+        needles = words if case_sensitive else tuple(word.casefold() for word in words)
         for original_word, needle in zip(words, needles, strict=True):
             if needle in haystack:
                 return MatchResult(
