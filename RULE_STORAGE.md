@@ -17,6 +17,7 @@ configuration, for example:
 - size and safety limits
 - mute/report settings
 - matcher behavior knobs such as `obfuscated_word_max_gap`
+- regex behavior knobs such as `regex_gap_max`
 
 JSON config must not contain:
 

@@ -23,6 +23,9 @@ DEFAULT_REPORT_DAYS = 7
 DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED = True
 DEFAULT_OBFUSCATED_WORD_MAX_GAP = 4
 MAX_OBFUSCATED_WORD_MAX_GAP = 64
+REGEX_GAP_PLACEHOLDER = "{{GAP}}"
+DEFAULT_REGEX_GAP_MAX = 8
+MAX_REGEX_GAP_MAX = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +53,7 @@ class ChatFilterSettings:
         DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED
     )
     obfuscated_word_max_gap: int = DEFAULT_OBFUSCATED_WORD_MAX_GAP
+    regex_gap_max: int = DEFAULT_REGEX_GAP_MAX
 
     @classmethod
     def from_config(cls, config: dict[str, Any] | None) -> "ChatFilterSettings":
@@ -112,6 +116,12 @@ class ChatFilterSettings:
                 minimum=0,
                 maximum=MAX_OBFUSCATED_WORD_MAX_GAP,
             ),
+            regex_gap_max=_bounded_int(
+                data.get("regex_gap_max"),
+                default=DEFAULT_REGEX_GAP_MAX,
+                minimum=0,
+                maximum=MAX_REGEX_GAP_MAX,
+            ),
         )
 
 
@@ -158,6 +168,7 @@ def normalize_regex_rules(
     case_sensitive: bool,
     max_count: int,
     max_length: int,
+    regex_gap_max: int = DEFAULT_REGEX_GAP_MAX,
 ) -> tuple[RegexRule, ...]:
     if value is None:
         return ()
@@ -174,7 +185,8 @@ def normalize_regex_rules(
     for item in items:
         if not isinstance(item, str):
             continue
-        pattern = item.strip()
+        raw_pattern = item.strip()
+        pattern = _expand_regex_gap_placeholder(raw_pattern, regex_gap_max)
         if (
             not pattern
             or len(pattern) > max_length
@@ -191,6 +203,13 @@ def normalize_regex_rules(
         if len(normalized) >= max_count:
             break
     return tuple(normalized)
+
+
+def _expand_regex_gap_placeholder(pattern: str, regex_gap_max: int) -> str:
+    if REGEX_GAP_PLACEHOLDER not in pattern:
+        return pattern
+    gap_pattern = rf"[\s\S]{{0,{regex_gap_max}}}"
+    return pattern.replace(REGEX_GAP_PLACEHOLDER, gap_pattern)
 
 
 def _looks_like_high_risk_regex(pattern: str) -> bool:

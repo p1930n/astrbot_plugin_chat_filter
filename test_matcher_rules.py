@@ -262,21 +262,32 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
             {
                 "obfuscated_word_matching_enabled": False,
                 "obfuscated_word_max_gap": "2",
+                "regex_gap_max": "3",
             }
         )
         too_large = ChatFilterSettings.from_config(
-            {"obfuscated_word_max_gap": 999}
+            {
+                "obfuscated_word_max_gap": 999,
+                "regex_gap_max": 999,
+            }
         )
         bool_gap = ChatFilterSettings.from_config(
-            {"obfuscated_word_max_gap": True}
+            {
+                "obfuscated_word_max_gap": True,
+                "regex_gap_max": True,
+            }
         )
 
         self.assertTrue(defaults.obfuscated_word_matching_enabled)
         self.assertEqual(defaults.obfuscated_word_max_gap, 4)
+        self.assertEqual(defaults.regex_gap_max, 8)
         self.assertFalse(disabled.obfuscated_word_matching_enabled)
         self.assertEqual(disabled.obfuscated_word_max_gap, 2)
+        self.assertEqual(disabled.regex_gap_max, 3)
         self.assertEqual(too_large.obfuscated_word_max_gap, 64)
+        self.assertEqual(too_large.regex_gap_max, 64)
         self.assertEqual(bool_gap.obfuscated_word_max_gap, 4)
+        self.assertEqual(bool_gap.regex_gap_max, 8)
 
     def test_status_uses_snapshot_summary_not_settings_global_words(self) -> None:
         settings = ChatFilterSettings.from_config({"default_group_enabled": True})

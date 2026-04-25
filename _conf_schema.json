@@ -24,6 +24,11 @@
     "type": "int",
     "default": 4
   },
+  "regex_gap_max": {
+    "description": "正则规则 {{GAP}} 占位符展开后的最大间隔，范围 0-64；只影响显式使用 {{GAP}} 的 SQLite 正则规则",
+    "type": "int",
+    "default": 8
+  },
   "stop_event": {
     "description": "命中后阻断后续事件处理",
     "type": "bool",

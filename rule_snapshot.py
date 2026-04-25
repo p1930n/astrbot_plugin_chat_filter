@@ -71,6 +71,7 @@ class RuleSnapshot:
             case_sensitive=settings.case_sensitive,
             max_count=DEFAULT_MAX_REGEX_RULE_COUNT,
             max_length=DEFAULT_MAX_REGEX_RULE_LENGTH,
+            regex_gap_max=settings.regex_gap_max,
         )
         return cls(
             global_words=global_words,

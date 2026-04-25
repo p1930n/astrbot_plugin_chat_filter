@@ -46,6 +46,24 @@ class RuleSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot.global_regex_rules[0].pattern, "root")
         self.assertIsNotNone(snapshot.global_regex_rules[0].compiled.search("ROOT"))
 
+    def test_snapshot_expands_configured_regex_gap_placeholder(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {
+                "default_group_enabled": True,
+                "regex_gap_max": 2,
+            }
+        )
+        repository = FakeRuleRepository(
+            [_rule(1, "regex", r"a{{GAP}}b", enabled=True)]
+        )
+
+        snapshot = RuleSnapshot.from_repository(repository, settings=settings)
+        regex_rule = snapshot.global_regex_rules[0]
+
+        self.assertEqual(regex_rule.pattern, r"a[\s\S]{0,2}b")
+        self.assertIsNotNone(regex_rule.compiled.search("aXXb"))
+        self.assertIsNone(regex_rule.compiled.search("aXXXb"))
+
 
 class FakeRuleRepository:
     def __init__(self, rules: list[GlobalRule]) -> None:
