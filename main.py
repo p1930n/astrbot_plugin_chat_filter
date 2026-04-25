@@ -152,17 +152,19 @@ class ChatFilterPlugin(Star):
     ):
         snapshot = dehydrate_event_snapshot(event)
         if listening_group == "list" and not push_group:
-            yield event.plain_result(
+            yield self._command_result(
+                event,
                 await self.command_service.format_push_bindings(snapshot.platform)
             )
             return
 
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.add_push_binding(
                 snapshot,
                 listening_group_id=listening_group,
                 push_group_id=push_group,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -175,19 +177,21 @@ class ChatFilterPlugin(Star):
     ):
         snapshot = dehydrate_event_snapshot(event)
         if group_id == "list" and not seconds:
-            yield event.plain_result(
+            yield self._command_result(
+                event,
                 await self.command_service.format_group_mute_policies(
                     snapshot.platform
-                )
+                ),
             )
             return
 
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.set_group_mute_duration(
                 snapshot,
                 group_id=group_id,
                 seconds=seconds,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -201,20 +205,22 @@ class ChatFilterPlugin(Star):
     ):
         snapshot = dehydrate_event_snapshot(event)
         if group_id == "list" and not multiplier and not reset_seconds:
-            yield event.plain_result(
+            yield self._command_result(
+                event,
                 await self.command_service.format_group_mute_escalation_policies(
                     snapshot.platform
-                )
+                ),
             )
             return
 
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.set_group_mute_escalation(
                 snapshot,
                 group_id=group_id,
                 multiplier=multiplier,
                 reset_seconds=reset_seconds,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -224,7 +230,10 @@ class ChatFilterPlugin(Star):
         capabilities = self._platform_actions_for_event(event).probe_capabilities(
             snapshot.platform
         )
-        yield event.plain_result(format_platform_probe(snapshot, capabilities))
+        yield self._command_result(
+            event,
+            format_platform_probe(snapshot, capabilities),
+        )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("forward-probe")
@@ -234,12 +243,13 @@ class ChatFilterPlugin(Star):
         target_group: str = "",
     ):
         snapshot = dehydrate_event_snapshot(event)
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.run_forward_probe(
                 snapshot,
                 self._platform_actions_for_event(event),
                 target_group,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -251,12 +261,13 @@ class ChatFilterPlugin(Star):
         days: str = "",
     ):
         snapshot = dehydrate_event_snapshot(event)
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.report_service.generate_dry_run(
                 snapshot,
                 listening_group_id=listening_group,
                 days=days,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
@@ -267,28 +278,134 @@ class ChatFilterPlugin(Star):
         target_group: str = "",
     ):
         snapshot = dehydrate_event_snapshot(event)
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.file_probe_service.run_file_probe(
                 snapshot,
                 self._platform_actions_for_event(event),
                 target_group,
-            )
+            ),
         )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("help")
+    async def cf_help(self, event: AstrMessageEvent):
+        yield self._command_result(event, self.command_service.format_help())
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("status")
+    async def cf_status(self, event: AstrMessageEvent):
+        yield self._command_result(event, self.command_service.format_status())
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("enable")
+    async def cf_enable(self, event: AstrMessageEvent):
+        yield self._command_result(
+            event,
+            await self.command_service.set_global_enabled(True),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("disable")
+    async def cf_disable(self, event: AstrMessageEvent):
+        yield self._command_result(
+            event,
+            await self.command_service.set_global_enabled(False),
+        )
+
+    @cf.group("group")
+    def cf_group():
+        pass
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("status")
+    async def cf_group_status(self, event: AstrMessageEvent):
+        yield self._command_result(
+            event,
+            self.command_service.format_group_status(
+                current_group_key_from_event(event)
+            ),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("enable")
+    async def cf_group_enable(self, event: AstrMessageEvent):
+        yield self._command_result(
+            event,
+            await self.command_service.set_group_enabled(
+                current_group_key_from_event(event),
+                True,
+            ),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("disable")
+    async def cf_group_disable(self, event: AstrMessageEvent):
+        yield self._command_result(
+            event,
+            await self.command_service.set_group_enabled(
+                current_group_key_from_event(event),
+                False,
+            ),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("add")
+    async def cf_group_add(self, event: AstrMessageEvent, word: str):
+        yield self._command_result(
+            event,
+            await self.command_service.add_group_word(
+                current_group_key_from_event(event),
+                word,
+            ),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("remove")
+    async def cf_group_remove(self, event: AstrMessageEvent, word: str):
+        yield self._command_result(
+            event,
+            await self.command_service.remove_group_word(
+                current_group_key_from_event(event),
+                word,
+            ),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("list")
+    async def cf_group_list(self, event: AstrMessageEvent):
+        yield self._command_result(
+            event,
+            self.command_service.format_group_words(
+                current_group_key_from_event(event)
+            ),
+        )
+
+    @filter.permission_type(filter.PermissionType.ADMIN)
+    @chatfilter.command("help")
+    async def chatfilter_help(self, event: AstrMessageEvent):
+        yield self._command_result(event, self.command_service.format_help())
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("status")
     async def chatfilter_status(self, event: AstrMessageEvent):
-        yield event.plain_result(self.command_service.format_status())
+        yield self._command_result(event, self.command_service.format_status())
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("enable")
     async def chatfilter_enable(self, event: AstrMessageEvent):
-        yield event.plain_result(await self.command_service.set_global_enabled(True))
+        yield self._command_result(
+            event,
+            await self.command_service.set_global_enabled(True),
+        )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("disable")
     async def chatfilter_disable(self, event: AstrMessageEvent):
-        yield event.plain_result(await self.command_service.set_global_enabled(False))
+        yield self._command_result(
+            event,
+            await self.command_service.set_global_enabled(False),
+        )
 
     @chatfilter.group("group")
     def chatfilter_group():
@@ -297,60 +414,71 @@ class ChatFilterPlugin(Star):
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("status")
     async def chatfilter_group_status(self, event: AstrMessageEvent):
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             self.command_service.format_group_status(
                 current_group_key_from_event(event)
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("enable")
     async def chatfilter_group_enable(self, event: AstrMessageEvent):
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.set_group_enabled(
                 current_group_key_from_event(event),
                 True,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("disable")
     async def chatfilter_group_disable(self, event: AstrMessageEvent):
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.set_group_enabled(
                 current_group_key_from_event(event),
                 False,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("add")
     async def chatfilter_group_add(self, event: AstrMessageEvent, word: str):
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.add_group_word(
                 current_group_key_from_event(event),
                 word,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("remove")
     async def chatfilter_group_remove(self, event: AstrMessageEvent, word: str):
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             await self.command_service.remove_group_word(
                 current_group_key_from_event(event),
                 word,
-            )
+            ),
         )
 
     @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("list")
     async def chatfilter_group_list(self, event: AstrMessageEvent):
-        yield event.plain_result(
+        yield self._command_result(
+            event,
             self.command_service.format_group_words(
                 current_group_key_from_event(event)
-            )
+            ),
         )
+
+    @staticmethod
+    def _command_result(event: AstrMessageEvent, text: str):
+        event.stop_event()
+        return event.plain_result(text)
 
     def _platform_actions_for_event(self, event: AstrMessageEvent) -> PlatformActions:
         if self.platform_actions is not None:

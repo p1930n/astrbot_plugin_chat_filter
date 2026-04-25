@@ -80,6 +80,15 @@ class ChatFilterCommandService:
             f"global_words={global_word_count}, groups={group_count}."
         )
 
+    def format_help(self) -> str:
+        return (
+            "Chat Filter commands: "
+            ".cf status; .cf enable; .cf disable; "
+            ".cf group status|enable|disable|add|remove|list; "
+            ".cf bind; .cf mute; .cf mute-stack; "
+            ".cf probe; .cf forward-probe; .cf report-dry-run; .cf file-probe."
+        )
+
     async def set_global_enabled(self, enabled: bool) -> str:
         self._state.global_enabled = enabled
         if not await self._try_save_state():
