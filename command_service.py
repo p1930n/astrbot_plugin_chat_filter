@@ -10,7 +10,7 @@ from .platform_actions import (
     PlatformActions,
     SendForwardMessageRequest,
 )
-from .repository import ChatFilterRepository
+from .repository import ChatFilterRepository, RepositorySchemaError
 from .settings import (
     MAX_MUTE_DURATION_SECONDS,
     MAX_MUTE_ESCALATION_MULTIPLIER,
@@ -42,6 +42,8 @@ def load_runtime_state(
 ) -> RuntimeState:
     try:
         return repository.load()
+    except RepositorySchemaError:
+        raise
     except Exception as exc:
         logger.warning(
             "Chat Filter state load failed; using empty runtime state: "
