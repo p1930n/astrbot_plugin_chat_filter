@@ -22,6 +22,9 @@ MAX_MUTE_ESCALATION_RESET_SECONDS = 2_592_000
 DEFAULT_REPORT_DAYS = 7
 DEFAULT_GLOBAL_WORDS: tuple[str, ...] = ()
 DEFAULT_GLOBAL_REGEX_RULES: tuple[str, ...] = ()
+DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED = True
+DEFAULT_OBFUSCATED_WORD_MAX_GAP = 4
+MAX_OBFUSCATED_WORD_MAX_GAP = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +48,10 @@ class ChatFilterSettings:
     mute_escalation_multiplier: int = DEFAULT_MUTE_ESCALATION_MULTIPLIER
     mute_escalation_reset_seconds: int = DEFAULT_MUTE_ESCALATION_RESET_SECONDS
     default_report_days: int = DEFAULT_REPORT_DAYS
+    obfuscated_word_matching_enabled: bool = (
+        DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED
+    )
+    obfuscated_word_max_gap: int = DEFAULT_OBFUSCATED_WORD_MAX_GAP
 
     @classmethod
     def from_config(cls, config: dict[str, Any] | None) -> "ChatFilterSettings":
@@ -96,6 +103,16 @@ class ChatFilterSettings:
                 default=DEFAULT_REPORT_DAYS,
                 minimum=1,
                 maximum=366,
+            ),
+            obfuscated_word_matching_enabled=_as_bool(
+                data.get("obfuscated_word_matching_enabled"),
+                DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED,
+            ),
+            obfuscated_word_max_gap=_bounded_int(
+                data.get("obfuscated_word_max_gap"),
+                default=DEFAULT_OBFUSCATED_WORD_MAX_GAP,
+                minimum=0,
+                maximum=MAX_OBFUSCATED_WORD_MAX_GAP,
             ),
         )
 

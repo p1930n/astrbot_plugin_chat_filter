@@ -24,6 +24,16 @@
     "type": "bool",
     "default": false
   },
+  "obfuscated_word_matching_enabled": {
+    "description": "启用普通违禁词抗绕过匹配，词内插入短文本仍会命中",
+    "type": "bool",
+    "default": true
+  },
+  "obfuscated_word_max_gap": {
+    "description": "普通违禁词抗绕过匹配的相邻字符最大间隔，范围 0-64；越大覆盖越强但误伤越多",
+    "type": "int",
+    "default": 4
+  },
   "stop_event": {
     "description": "命中后阻断后续事件处理",
     "type": "bool",

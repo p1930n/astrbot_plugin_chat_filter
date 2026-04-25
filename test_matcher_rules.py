@@ -99,6 +99,185 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(regex_result.matched_word, "regex:^root$")
         self.assertEqual(regex_result.word_count, 2)
 
+    def test_matcher_detects_obfuscated_words_with_short_gaps(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {"enabled": True, "default_group_enabled": True}
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [
+                _rule(1, "word", "脑残"),
+                _rule(2, "word", "加微信"),
+            ],
+            settings=settings,
+        )
+        state = RuntimeState()
+        matcher = ChatFilterMatcher()
+
+        insult_result = matcher.detect(
+            _message("脑u残"),
+            settings,
+            state,
+            snapshot,
+        )
+        contact_result = matcher.detect(
+            _message("加XX微信"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertTrue(insult_result.matched)
+        self.assertEqual(insult_result.matched_word, "脑残")
+        self.assertTrue(contact_result.matched)
+        self.assertEqual(contact_result.matched_word, "加微信")
+
+    def test_obfuscated_word_matching_can_be_disabled(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {
+                "enabled": True,
+                "default_group_enabled": True,
+                "obfuscated_word_matching_enabled": False,
+            }
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "脑残")],
+            settings=settings,
+        )
+        result = ChatFilterMatcher().detect(
+            _message("脑u残"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+
+        self.assertFalse(result.matched)
+
+    def test_obfuscated_word_matching_respects_gap_limit(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {
+                "enabled": True,
+                "default_group_enabled": True,
+                "obfuscated_word_max_gap": 1,
+            }
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "脑残")],
+            settings=settings,
+        )
+        matcher = ChatFilterMatcher()
+
+        short_gap = matcher.detect(
+            _message("脑u残"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+        long_gap = matcher.detect(
+            _message("脑uv残"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+
+        self.assertTrue(short_gap.matched)
+        self.assertFalse(long_gap.matched)
+
+    def test_obfuscated_word_matching_respects_case_sensitive_mode(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {
+                "enabled": True,
+                "default_group_enabled": True,
+                "case_sensitive": True,
+            }
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "Ab")],
+            settings=settings,
+        )
+        matcher = ChatFilterMatcher()
+
+        exact_case = matcher.detect(
+            _message("Axb"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+        wrong_case = matcher.detect(
+            _message("axb"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+
+        self.assertTrue(exact_case.matched)
+        self.assertFalse(wrong_case.matched)
+
+    def test_single_character_words_do_not_use_obfuscated_matching(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {"enabled": True, "default_group_enabled": True}
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "坏")],
+            settings=settings,
+        )
+
+        direct_result = ChatFilterMatcher().detect(
+            _message("坏"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+        unrelated_result = ChatFilterMatcher().detect(
+            _message("不"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+
+        self.assertTrue(direct_result.matched)
+        self.assertFalse(unrelated_result.matched)
+
+    def test_obfuscated_word_matching_uses_2000_character_scan_limit(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {"enabled": True, "default_group_enabled": True}
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "脑残")],
+            settings=settings,
+        )
+        text = ("x" * 2000) + "脑u残"
+
+        result = ChatFilterMatcher().detect(
+            _message(text),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+
+        self.assertFalse(result.matched)
+
+    def test_settings_parse_obfuscated_word_matching_defaults_and_bounds(self) -> None:
+        defaults = ChatFilterSettings.from_config({})
+        disabled = ChatFilterSettings.from_config(
+            {
+                "obfuscated_word_matching_enabled": False,
+                "obfuscated_word_max_gap": "2",
+            }
+        )
+        too_large = ChatFilterSettings.from_config(
+            {"obfuscated_word_max_gap": 999}
+        )
+        bool_gap = ChatFilterSettings.from_config(
+            {"obfuscated_word_max_gap": True}
+        )
+
+        self.assertTrue(defaults.obfuscated_word_matching_enabled)
+        self.assertEqual(defaults.obfuscated_word_max_gap, 4)
+        self.assertFalse(disabled.obfuscated_word_matching_enabled)
+        self.assertEqual(disabled.obfuscated_word_max_gap, 2)
+        self.assertEqual(too_large.obfuscated_word_max_gap, 64)
+        self.assertEqual(bool_gap.obfuscated_word_max_gap, 4)
+
     def test_status_uses_snapshot_summary_not_settings_global_words(self) -> None:
         settings = ChatFilterSettings.from_config({"default_group_enabled": True})
         snapshot = RuleSnapshot(
