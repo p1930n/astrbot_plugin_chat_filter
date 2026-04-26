@@ -50,17 +50,17 @@ def _install_astrbot_stubs() -> None:
 _ASYNCIO = _install_asyncio_stub_if_needed()
 _install_astrbot_stubs()
 
-from astrbot_plugin_chat_filter.command_auth import (  # noqa: E402
+from astrbot_plugin_chat_filter.commands.command_auth import (  # noqa: E402
     COMMAND_PERMISSION_DENIED,
     GROUP_ENABLE_PERMISSION_DENIED,
     CommandAuthorizer,
 )
-from astrbot_plugin_chat_filter.command_controller import (  # noqa: E402
+from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E402
     GROUP_ADMIN_EXEMPT_USAGE,
     CommandController,
 )
-from astrbot_plugin_chat_filter.command_gateway import CommandGateway  # noqa: E402
-from astrbot_plugin_chat_filter.models import PlatformEventSnapshot  # noqa: E402
+from astrbot_plugin_chat_filter.platform.command_gateway import CommandGateway  # noqa: E402
+from astrbot_plugin_chat_filter.domain.models import PlatformEventSnapshot  # noqa: E402
 
 
 class CommandControllerAdminExemptTests(unittest.TestCase):

@@ -26,7 +26,7 @@ sys.modules.setdefault("astrbot", astrbot_module)
 sys.modules.setdefault("astrbot.api", astrbot_api_module)
 sys.modules.setdefault("astrbot.api.event", astrbot_event_module)
 
-from astrbot_plugin_chat_filter.astrbot_event_adapter import (  # noqa: E402
+from astrbot_plugin_chat_filter.platform.astrbot_event_adapter import (  # noqa: E402
     dehydrate_event_snapshot,
 )
 

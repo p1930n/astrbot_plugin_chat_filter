@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import types
 import unittest
 from pathlib import Path
@@ -32,12 +33,12 @@ def _install_asyncio_stub_if_needed():
 
 _ASYNCIO = _install_asyncio_stub_if_needed()
 
-from astrbot_plugin_chat_filter.command_service import (  # noqa: E402
+from astrbot_plugin_chat_filter.commands.command_service import (  # noqa: E402
     ChatFilterCommandService,
 )
-from astrbot_plugin_chat_filter.models import GroupPolicy, RuntimeState  # noqa: E402
-from astrbot_plugin_chat_filter.rule_snapshot import RuleSnapshot  # noqa: E402
-from astrbot_plugin_chat_filter.settings import ChatFilterSettings  # noqa: E402
+from astrbot_plugin_chat_filter.domain.models import GroupPolicy, RuntimeState  # noqa: E402
+from astrbot_plugin_chat_filter.domain.rule_snapshot import RuleSnapshot  # noqa: E402
+from astrbot_plugin_chat_filter.domain.settings import ChatFilterSettings  # noqa: E402
 
 
 class CommandServiceGroupPolicyTests(unittest.TestCase):
@@ -215,6 +216,32 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
         )
         self.assertEqual(logger.errors, ["Chat Filter state save failed: error_type=%s"])
 
+    def test_concurrent_group_word_updates_serialize_state_save(self) -> None:
+        if not all(
+            hasattr(_ASYNCIO, name) for name in ("create_task", "gather", "sleep")
+        ):
+            self.skipTest("asyncio task support unavailable")
+
+        state = RuntimeState()
+        repository = _BlockingSnapshotRepository(group_key="qq:100")
+        service = _service(state=state, repository=repository)  # type: ignore[arg-type]
+
+        results, second_save_started_before_release = _run(
+            _run_concurrent_group_word_updates(service, repository)
+        )
+
+        self.assertEqual(results, ["Group word added.", "Group word added."])
+        self.assertFalse(second_save_started_before_release)
+        self.assertEqual(
+            state.groups["qq:100"],
+            GroupPolicy(custom_words=("alpha", "beta")),
+        )
+        self.assertEqual(repository.persisted_words, ("alpha", "beta"))
+        self.assertEqual(
+            repository.save_snapshots,
+            [("alpha",), ("alpha", "beta")],
+        )
+
 
 def _service(
     *,
@@ -247,6 +274,37 @@ class _Repository:
         self.saved_states.append(state)
 
 
+class _BlockingSnapshotRepository:
+    def __init__(self, group_key: str) -> None:
+        self._group_key = group_key
+        self._save_lock = threading.Lock()
+        self._save_count = 0
+        self._release_first_save = threading.Event()
+        self.first_save_started = threading.Event()
+        self.second_save_started = threading.Event()
+        self.persisted_words: tuple[str, ...] = ()
+        self.save_snapshots: list[tuple[str, ...]] = []
+
+    def save(self, state: RuntimeState) -> None:
+        snapshot = state.groups.get(self._group_key, GroupPolicy()).custom_words
+        with self._save_lock:
+            self._save_count += 1
+            save_number = self._save_count
+            self.save_snapshots.append(snapshot)
+
+        if save_number == 1:
+            self.first_save_started.set()
+            if not self._release_first_save.wait(2):
+                raise AssertionError("first save was not released")
+        elif save_number == 2:
+            self.second_save_started.set()
+
+        self.persisted_words = snapshot
+
+    def release_first_save(self) -> None:
+        self._release_first_save.set()
+
+
 class _Logger:
     def __init__(self) -> None:
         self.errors: list[str] = []
@@ -268,6 +326,30 @@ def _run(awaitable):
     except StopIteration as exc:
         return exc.value
     raise AssertionError("awaitable yielded instead of completing synchronously")
+
+
+async def _run_concurrent_group_word_updates(
+    service: ChatFilterCommandService,
+    repository: _BlockingSnapshotRepository,
+) -> tuple[list[str], bool]:
+    alpha_task = _ASYNCIO.create_task(service.add_group_word("qq:100", "alpha"))
+    first_save_started = await _ASYNCIO.to_thread(
+        repository.first_save_started.wait,
+        2,
+    )
+    if not first_save_started:
+        raise AssertionError("first save did not start")
+
+    beta_task = _ASYNCIO.create_task(service.add_group_word("qq:100", "beta"))
+    await _ASYNCIO.sleep(0)
+    second_save_started_before_release = await _ASYNCIO.to_thread(
+        repository.second_save_started.wait,
+        0.2,
+    )
+    repository.release_first_save()
+
+    results = await _ASYNCIO.gather(alpha_task, beta_task)
+    return list(results), second_save_started_before_release
 
 
 if __name__ == "__main__":

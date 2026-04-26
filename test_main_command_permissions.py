@@ -114,11 +114,17 @@ def _install_astrbot_stubs() -> None:
 _install_asyncio_stub_if_needed()
 _install_astrbot_stubs()
 
+from astrbot_plugin_chat_filter.commands.command_auth import CommandAuthorizer  # noqa: E402
+from astrbot_plugin_chat_filter.commands.command_controller import CommandController  # noqa: E402
+from astrbot_plugin_chat_filter.platform.command_gateway import CommandGateway  # noqa: E402
 from astrbot_plugin_chat_filter.main import (  # noqa: E402
     COMMAND_PERMISSION_DENIED,
     GROUP_ADMIN_EXEMPT_USAGE,
     GROUP_ENABLE_PERMISSION_DENIED,
     ChatFilterPlugin,
+)
+from astrbot_plugin_chat_filter.platform.platform_action_factory import (  # noqa: E402
+    PlatformActionFactory,
 )
 
 
@@ -346,6 +352,17 @@ def _plugin(
     plugin = object.__new__(ChatFilterPlugin)
     plugin.context = _ContextWithConfig(admins)
     plugin.command_service = command_service or _CommandService()
+    command_authorizer = CommandAuthorizer(plugin.context.get_config)
+    command_controller = CommandController(
+        plugin.command_service,
+        report_service=None,
+        file_probe_service=None,
+        authorizer=command_authorizer,
+    )
+    plugin._command_gateway = CommandGateway(
+        command_controller,
+        PlatformActionFactory(lambda: None),
+    )
     return plugin
 
 

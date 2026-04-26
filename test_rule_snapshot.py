@@ -10,9 +10,9 @@ PACKAGE_PARENT = PACKAGE_DIR.parent
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
-from astrbot_plugin_chat_filter.rule_models import GlobalRule, RuleType  # noqa: E402
-from astrbot_plugin_chat_filter.rule_snapshot import RuleSnapshot  # noqa: E402
-from astrbot_plugin_chat_filter.settings import ChatFilterSettings  # noqa: E402
+from astrbot_plugin_chat_filter.domain.rule_models import GlobalRule, RuleType  # noqa: E402
+from astrbot_plugin_chat_filter.domain.rule_snapshot import RuleSnapshot  # noqa: E402
+from astrbot_plugin_chat_filter.domain.settings import ChatFilterSettings  # noqa: E402
 
 
 class RuleSnapshotTests(unittest.TestCase):
