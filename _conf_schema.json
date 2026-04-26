@@ -9,15 +9,25 @@
     "type": "bool",
     "default": false
   },
-  "global_words": {
-    "description": "全局词库；空词条、重复词条和超长词条会被忽略",
-    "type": "list",
-    "default": []
-  },
   "case_sensitive": {
     "description": "区分大小写",
     "type": "bool",
     "default": false
+  },
+  "obfuscated_word_matching_enabled": {
+    "description": "启用普通违禁词抗绕过匹配，词内插入短文本仍会命中",
+    "type": "bool",
+    "default": true
+  },
+  "obfuscated_word_max_gap": {
+    "description": "普通违禁词抗绕过匹配的相邻字符最大间隔，范围 0-64；越大覆盖越强但误伤越多",
+    "type": "int",
+    "default": 4
+  },
+  "regex_gap_max": {
+    "description": "正则规则 {{GAP}} 占位符展开后的最大间隔，范围 0-64；只影响显式使用 {{GAP}} 的 SQLite 正则规则",
+    "type": "int",
+    "default": 8
   },
   "stop_event": {
     "description": "命中后阻断后续事件处理",
@@ -37,7 +47,7 @@
   "max_word_count": {
     "description": "每个词库最多词条数，范围 1-5000",
     "type": "int",
-    "default": 200
+    "default": 500
   },
   "max_word_length": {
     "description": "单个词条最大长度，范围 1-512",
@@ -50,27 +60,22 @@
     "default": true
   },
   "mute_duration_seconds": {
-    "description": "默认禁言时长，单位秒；实际执行前会按最小和最大边界裁剪",
+    "description": "全局默认禁言时间，单位秒；群聊可通过命令单独覆盖",
     "type": "int",
     "default": 600
   },
-  "mute_min_seconds": {
-    "description": "QQ 禁言最小时长边界，单位秒；后续平台动作实现前需按适配器确认",
+  "mute_escalation_multiplier": {
+    "description": "连续命中时的默认禁言叠加倍率；群聊可通过 /cf mute-stack 单独覆盖",
     "type": "int",
-    "default": 60
+    "default": 2
   },
-  "mute_max_seconds": {
-    "description": "QQ 禁言最大时长边界，单位秒；默认 30 天，后续平台动作实现前需按适配器确认",
+  "mute_escalation_reset_seconds": {
+    "description": "连续命中禁言叠加刷新时间，单位秒；超过该时间未命中会从首次命中重新计算",
     "type": "int",
-    "default": 2592000
+    "default": 3600
   },
-  "report_files_enabled": {
-    "description": "启用周期违禁词历史文件；当前阶段仅保留配置，发送任务后续实现",
-    "type": "bool",
-    "default": false
-  },
-  "default_report_interval_days": {
-    "description": "未单独配置群时的默认历史文件推送间隔，单位天",
+  "default_report_days": {
+    "description": "手动生成违禁词历史报表时的默认统计天数",
     "type": "int",
     "default": 7
   }

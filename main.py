@@ -1,53 +1,195 @@
 from __future__ import annotations
 
-import asyncio
-from collections import defaultdict
-from hashlib import sha256
-
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
+from .astrbot_event_adapter import (
+    dehydrate_group_message,
+    extract_onebot_action_client,
+    field_state,
+    has_required_message_scope,
+)
+from .command_auth import (
+    COMMAND_PERMISSION_DENIED,
+    GROUP_ENABLE_PERMISSION_DENIED,
+    CommandAuthorizer,
+)
+from .command_controller import GROUP_ADMIN_EXEMPT_USAGE, CommandController
+from .command_gateway import CommandGateway
+from .command_service import ChatFilterCommandService, load_runtime_state
+from .file_probe_service import FileProbeService
 from .matcher import ChatFilterMatcher
-from .models import ChatMessage, GroupPolicy, PushBinding, RuntimeState, ViolationEvent
+from .platform_action_factory import PlatformActionFactory
+from .platform_actions import PlatformActions
+from .report_service import ViolationReportService
 from .repository import ChatFilterRepository, default_data_root
-from .settings import ChatFilterSettings, validate_single_word
+from .rule_snapshot import RuleSnapshot
+from .settings import ChatFilterSettings
+from .violation_actions import ViolationActionExecutor
+from .violation_records import ViolationRecorder
 
 
-ACTION_NOT_SCHEDULED = "not_scheduled"
-BIND_LIST_LIMIT = 20
 COMMAND_PREFIXES = ("/chatfilter", "/cf", ".cf")
-MAX_QQ_GROUP_ID_LENGTH = 20
-VIOLATION_EXCERPT_LENGTH = 300
+
+__all__ = (
+    "COMMAND_PERMISSION_DENIED",
+    "GROUP_ADMIN_EXEMPT_USAGE",
+    "GROUP_ENABLE_PERMISSION_DENIED",
+    "ChatFilterPlugin",
+)
 
 
 class ChatFilterPlugin(Star):
-    def __init__(self, context: Context, config: AstrBotConfig | None = None) -> None:
+    def __init__(
+        self,
+        context: Context,
+        config: AstrBotConfig | None = None,
+        platform_actions: PlatformActions | None = None,
+    ) -> None:
         super().__init__(context)
         self.settings = ChatFilterSettings.from_config(config)
+        self.data_root = default_data_root()
         self.repository = ChatFilterRepository(
-            default_data_root(),
+            self.data_root,
             max_word_count=self.settings.max_word_count,
             max_word_length=self.settings.max_word_length,
         )
+        self.rule_snapshot = RuleSnapshot.from_repository(
+            self.repository,
+            settings=self.settings,
+        )
+        self.state = load_runtime_state(self.repository, logger)
+        self.command_service = ChatFilterCommandService(
+            self.repository,
+            self.state,
+            self.settings,
+            self.rule_snapshot,
+            logger,
+        )
         self.matcher = ChatFilterMatcher()
-        self.state = self._load_state()
+        self.platform_actions = platform_actions
+        self.violation_action_executor = ViolationActionExecutor(
+            self.repository,
+            logger=logger,
+            default_mute_duration_seconds=self.settings.mute_duration_seconds,
+            default_mute_escalation_multiplier=(
+                self.settings.mute_escalation_multiplier
+            ),
+            default_mute_escalation_reset_seconds=(
+                self.settings.mute_escalation_reset_seconds
+            ),
+        )
+        self.violation_recorder = ViolationRecorder(self.repository, logger)
+        self.report_service = ViolationReportService(
+            self.repository,
+            data_root=self.data_root,
+            default_report_days=self.settings.default_report_days,
+            logger=logger,
+        )
+        self.file_probe_service = FileProbeService(
+            data_root=self.data_root,
+            logger=logger,
+        )
+        self._command_authorizer = CommandAuthorizer(self._get_config)
+        self._command_controller = CommandController(
+            self.command_service,
+            self.report_service,
+            self.file_probe_service,
+            self.command_authorizer,
+        )
+        self._platform_action_factory = PlatformActionFactory(
+            self._configured_platform_actions
+        )
+        self._command_gateway = CommandGateway(
+            self.command_controller,
+            self.platform_action_factory,
+        )
+
+    @property
+    def command_authorizer(self) -> CommandAuthorizer:
+        authorizer = getattr(self, "_command_authorizer", None)
+        if authorizer is None:
+            authorizer = CommandAuthorizer(self._get_config)
+            self._command_authorizer = authorizer
+        return authorizer
+
+    @property
+    def command_controller(self) -> CommandController:
+        controller = getattr(self, "_command_controller", None)
+        if controller is None:
+            controller = CommandController(
+                self.command_service,
+                getattr(self, "report_service", None),
+                getattr(self, "file_probe_service", None),
+                self.command_authorizer,
+            )
+            self._command_controller = controller
+        return controller
+
+    @property
+    def platform_action_factory(self) -> PlatformActionFactory:
+        factory = getattr(self, "_platform_action_factory", None)
+        if factory is None:
+            factory = PlatformActionFactory(self._configured_platform_actions)
+            self._platform_action_factory = factory
+        return factory
+
+    @property
+    def command_gateway(self) -> CommandGateway:
+        gateway = getattr(self, "_command_gateway", None)
+        if gateway is None:
+            gateway = CommandGateway(
+                self.command_controller,
+                self.platform_action_factory,
+            )
+            self._command_gateway = gateway
+        return gateway
 
     @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent):
-        message = self._dehydrate_group_message(event)
+        message = dehydrate_group_message(event)
         if self._is_own_command(message.text):
             return
+        if not has_required_message_scope(message):
+            logger.warning(
+                "Chat Filter skipped message with incomplete event scope: "
+                "platform=%s group_id=%s sender_id=%s",
+                field_state(message.platform),
+                field_state(message.group_id),
+                field_state(message.user_id),
+            )
+            return
 
-        result = self.matcher.detect(message, self.settings, self.state)
+        result = self.matcher.detect(
+            message,
+            self.settings,
+            self.state,
+            self.rule_snapshot,
+        )
         if not result.matched:
             return
 
+        platform_actions = self.platform_action_factory.for_platform(
+            message.platform,
+            extract_onebot_action_client(event),
+        )
+        violation_id: int | None = None
         if self.settings.violation_records_enabled:
-            await self._try_record_violation(message, result.matched_word)
+            violation_id = await self.violation_recorder.record(
+                message,
+                result.matched_word,
+                platform_actions,
+            )
 
         if self.settings.stop_event:
             event.stop_event()
+        if violation_id is not None:
+            await self.violation_action_executor.execute(
+                violation_id=violation_id,
+                message=message,
+                platform_actions=platform_actions,
+            )
         if self.settings.warn_user:
             yield event.plain_result(self.settings.warning_message)
 
@@ -59,7 +201,6 @@ class ChatFilterPlugin(Star):
     def cf():
         pass
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("bind")
     async def cf_bind(
         self,
@@ -67,367 +208,240 @@ class ChatFilterPlugin(Star):
         listening_group: str = "",
         push_group: str = "",
     ):
-        if listening_group == "list" and not push_group:
-            yield event.plain_result(await self._format_push_bindings(event))
-            return
+        yield await self.command_gateway.bind(event, listening_group, push_group)
 
-        if not _is_valid_qq_group_id(listening_group) or not _is_valid_qq_group_id(push_group):
-            yield event.plain_result("Usage: .cf bind [listening group] [push group]")
-            return
+    @cf.command("mute")
+    async def cf_mute(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        seconds: str = "",
+    ):
+        yield await self.command_gateway.mute(event, group_id, seconds)
 
-        platform = _safe_value(event.get_platform_name())
-        if not platform:
-            yield event.plain_result("Chat Filter bind failed: platform is unavailable.")
-            return
-
-        count = await self._try_add_push_binding(
-            platform=platform,
-            listening_group_id=listening_group,
-            push_group_id=push_group,
-            created_by=_safe_value(event.get_sender_id()),
-        )
-        if count is None:
-            yield event.plain_result("Chat Filter bind failed.")
-            return
-
-        yield event.plain_result(
-            "Chat Filter bind updated: "
-            f"{listening_group} has {count} push group(s)."
+    @cf.command("mute-stack")
+    async def cf_mute_stack(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        multiplier: str = "",
+        reset_seconds: str = "",
+    ):
+        yield await self.command_gateway.mute_stack(
+            event,
+            group_id,
+            multiplier,
+            reset_seconds,
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf.command("probe")
+    async def cf_probe(self, event: AstrMessageEvent):
+        yield await self.command_gateway.probe(event)
+
+    @cf.command("forward-probe")
+    async def cf_forward_probe(
+        self,
+        event: AstrMessageEvent,
+        target_group: str = "",
+    ):
+        yield await self.command_gateway.forward_probe(event, target_group)
+
+    @cf.command("report-dry-run")
+    async def cf_report_dry_run(
+        self,
+        event: AstrMessageEvent,
+        listening_group: str = "",
+        days: str = "",
+    ):
+        yield await self.command_gateway.report_dry_run(
+            event,
+            listening_group,
+            days,
+        )
+
+    @cf.command("file-probe")
+    async def cf_file_probe(
+        self,
+        event: AstrMessageEvent,
+        target_group: str = "",
+    ):
+        yield await self.command_gateway.file_probe(event, target_group)
+
+    @cf.command("help")
+    async def cf_help(self, event: AstrMessageEvent):
+        yield await self.command_gateway.help(event)
+
+    @cf.command("status")
+    async def cf_status(self, event: AstrMessageEvent):
+        yield await self.command_gateway.status(event)
+
+    @cf.command("enable")
+    async def cf_enable(self, event: AstrMessageEvent):
+        yield await self.command_gateway.enable(event)
+
+    @cf.command("disable")
+    async def cf_disable(self, event: AstrMessageEvent):
+        yield await self.command_gateway.disable(event)
+
+    @cf.group("group")
+    def cf_group():
+        pass
+
+    @cf_group.command("status")
+    async def cf_group_status(self, event: AstrMessageEvent):
+        yield await self.command_gateway.group_status(event)
+
+    @cf_group.command("enable")
+    async def cf_group_enable(self, event: AstrMessageEvent):
+        yield await self.command_gateway.group_enable(event)
+
+    @cf_group.command("disable")
+    async def cf_group_disable(self, event: AstrMessageEvent):
+        yield await self.command_gateway.group_disable(event)
+
+    @cf_group.command("add")
+    async def cf_group_add(self, event: AstrMessageEvent, word: str):
+        yield await self.command_gateway.group_add(event, word)
+
+    @cf_group.command("remove")
+    async def cf_group_remove(self, event: AstrMessageEvent, word: str):
+        yield await self.command_gateway.group_remove(event, word)
+
+    @cf_group.command("list")
+    async def cf_group_list(self, event: AstrMessageEvent):
+        yield await self.command_gateway.group_list(event)
+
+    @cf_group.command("admin-exempt")
+    async def cf_group_admin_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield await self.command_gateway.group_admin_exempt(event, action)
+
+    @cf_group.command("exempt")
+    async def cf_group_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield await self.command_gateway.group_admin_exempt(event, action)
+
+    @chatfilter.command("help")
+    async def chatfilter_help(self, event: AstrMessageEvent):
+        yield await self.command_gateway.help(event)
+
     @chatfilter.command("status")
     async def chatfilter_status(self, event: AstrMessageEvent):
-        enabled = self.state.effective_global_enabled(self.settings.enabled)
-        group_count = len(self.state.groups)
-        global_word_count = len(self.settings.global_words)
-        yield event.plain_result(
-            "Chat Filter status: "
-            f"global={'enabled' if enabled else 'disabled'}, "
-            f"default_group={'enabled' if self.settings.default_group_enabled else 'disabled'}, "
-            f"global_words={global_word_count}, groups={group_count}."
-        )
+        yield await self.command_gateway.status(event)
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("enable")
     async def chatfilter_enable(self, event: AstrMessageEvent):
-        self.state.global_enabled = True
-        if not await self._try_save_state():
-            yield event.plain_result("Chat Filter state update failed.")
-            return
-        yield event.plain_result("Chat Filter enabled globally.")
+        yield await self.command_gateway.enable(event)
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("disable")
     async def chatfilter_disable(self, event: AstrMessageEvent):
-        self.state.global_enabled = False
-        if not await self._try_save_state():
-            yield event.plain_result("Chat Filter state update failed.")
-            return
-        yield event.plain_result("Chat Filter disabled globally.")
+        yield await self.command_gateway.disable(event)
 
     @chatfilter.group("group")
     def chatfilter_group():
         pass
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("status")
     async def chatfilter_group_status(self, event: AstrMessageEvent):
-        group_key = self._current_group_key(event)
-        if group_key is None:
-            yield event.plain_result("This command must be used in a group chat.")
-            return
+        yield await self.command_gateway.group_status(event)
 
-        policy = self.state.get_group_policy(group_key)
-        effective_enabled = (
-            self.settings.default_group_enabled
-            if policy.enabled is None
-            else policy.enabled
-        )
-        yield event.plain_result(
-            "Chat Filter group status: "
-            f"group={'enabled' if effective_enabled else 'disabled'}, "
-            f"inherit_global={'enabled' if policy.inherit_global else 'disabled'}, "
-            f"custom_words={len(policy.custom_words)}."
-        )
-
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("enable")
     async def chatfilter_group_enable(self, event: AstrMessageEvent):
-        group_key = self._current_group_key(event)
-        if group_key is None:
-            yield event.plain_result("This command must be used in a group chat.")
-            return
+        yield await self.command_gateway.group_enable(event)
 
-        policy = self._mutable_group_policy(group_key)
-        policy.enabled = True
-        self.state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            yield event.plain_result("Chat Filter state update failed.")
-            return
-        yield event.plain_result("Chat Filter enabled for this group.")
-
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("disable")
     async def chatfilter_group_disable(self, event: AstrMessageEvent):
-        group_key = self._current_group_key(event)
-        if group_key is None:
-            yield event.plain_result("This command must be used in a group chat.")
-            return
+        yield await self.command_gateway.group_disable(event)
 
-        policy = self._mutable_group_policy(group_key)
-        policy.enabled = False
-        self.state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            yield event.plain_result("Chat Filter state update failed.")
-            return
-        yield event.plain_result("Chat Filter disabled for this group.")
-
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("add")
     async def chatfilter_group_add(self, event: AstrMessageEvent, word: str):
-        group_key = self._current_group_key(event)
-        if group_key is None:
-            yield event.plain_result("This command must be used in a group chat.")
-            return
+        yield await self.command_gateway.group_add(event, word)
 
-        cleaned = validate_single_word(word, max_length=self.settings.max_word_length)
-        if cleaned is None:
-            yield event.plain_result("Invalid word length.")
-            return
-
-        policy = self._mutable_group_policy(group_key)
-        if cleaned in policy.custom_words:
-            yield event.plain_result("Group word already exists.")
-            return
-        if len(policy.custom_words) >= self.settings.max_word_count:
-            yield event.plain_result("Group word limit reached.")
-            return
-
-        policy.custom_words = (*policy.custom_words, cleaned)
-        self.state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            yield event.plain_result("Chat Filter state update failed.")
-            return
-        yield event.plain_result("Group word added.")
-
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("remove")
     async def chatfilter_group_remove(self, event: AstrMessageEvent, word: str):
-        group_key = self._current_group_key(event)
-        if group_key is None:
-            yield event.plain_result("This command must be used in a group chat.")
-            return
+        yield await self.command_gateway.group_remove(event, word)
 
-        policy = self._mutable_group_policy(group_key)
-        remaining = tuple(item for item in policy.custom_words if item != word.strip())
-        if len(remaining) == len(policy.custom_words):
-            yield event.plain_result("Group word not found.")
-            return
-
-        policy.custom_words = remaining
-        self.state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            yield event.plain_result("Chat Filter state update failed.")
-            return
-        yield event.plain_result("Group word removed.")
-
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("list")
     async def chatfilter_group_list(self, event: AstrMessageEvent):
-        group_key = self._current_group_key(event)
-        if group_key is None:
-            yield event.plain_result("This command must be used in a group chat.")
-            return
+        yield await self.command_gateway.group_list(event)
 
-        policy = self.state.get_group_policy(group_key)
-        yield event.plain_result(f"Group custom word count: {len(policy.custom_words)}.")
-
-    def _load_state(self) -> RuntimeState:
-        try:
-            return self.repository.load()
-        except Exception as exc:
-            logger.warning("Chat Filter state load failed; using empty runtime state: %s", exc)
-            return RuntimeState()
-
-    async def _try_save_state(self) -> bool:
-        try:
-            await asyncio.to_thread(self.repository.save, self.state)
-            return True
-        except Exception as exc:
-            logger.error("Chat Filter state save failed: %s", exc)
-            return False
-
-    async def _try_add_push_binding(
+    @chatfilter_group.command("admin-exempt")
+    async def chatfilter_group_admin_exempt(
         self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield await self.command_gateway.group_admin_exempt(event, action)
+
+    @chatfilter_group.command("exempt")
+    async def chatfilter_group_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield await self.command_gateway.group_admin_exempt(event, action)
+
+    def _command_result(self, event: AstrMessageEvent, text: str):
+        return self.command_gateway.command_result(event, text)
+
+    async def _group_admin_exempt_command_response(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+    ) -> str:
+        return await self.command_gateway.group_admin_exempt_response_text(
+            event,
+            action,
+        )
+
+    async def _group_admin_exempt_command_text(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+    ) -> str:
+        return await self.command_gateway.group_admin_exempt_text(event, action)
+
+    def _command_denial(
+        self,
+        event: AstrMessageEvent,
         *,
-        platform: str,
-        listening_group_id: str,
-        push_group_id: str,
-        created_by: str,
-    ) -> int | None:
-        try:
-            return await asyncio.to_thread(
-                self.repository.add_push_binding,
-                platform=platform,
-                listening_group_id=listening_group_id,
-                push_group_id=push_group_id,
-                created_by=created_by,
-            )
-        except Exception as exc:
-            logger.error("Chat Filter push binding update failed: %s", exc)
-            return None
+        allow_group_manager: bool = True,
+    ) -> str | None:
+        return self.command_gateway.command_denial(
+            event,
+            allow_group_manager=allow_group_manager,
+        )
 
-    async def _format_push_bindings(self, event: AstrMessageEvent) -> str:
-        platform = _safe_value(event.get_platform_name())
-        if not platform:
-            return "Chat Filter bind list failed: platform is unavailable."
-        try:
-            bindings = await asyncio.to_thread(
-                self.repository.list_push_bindings,
-                platform=platform,
-            )
-        except Exception as exc:
-            logger.error("Chat Filter push binding list failed: %s", exc)
-            return "Chat Filter bind list failed."
-
-        if not bindings:
-            return "Chat Filter bind list is empty."
-        grouped = _group_push_bindings(bindings)
-        lines = [
-            f"{listening_group}: {', '.join(push_groups)}"
-            for listening_group, push_groups in list(grouped.items())[:BIND_LIST_LIMIT]
-        ]
-        if len(grouped) > BIND_LIST_LIMIT:
-            lines.append(f"... and {len(grouped) - BIND_LIST_LIMIT} more group(s).")
-        return "Chat Filter bind list:\n" + "\n".join(lines)
-
-    async def _try_record_violation(
+    def _can_use_command(
         self,
-        message: ChatMessage,
-        matched_word: str | None,
+        event: AstrMessageEvent,
+        *,
+        allow_group_manager: bool = True,
     ) -> bool:
-        if not matched_word:
-            return False
-        violation = ViolationEvent(
-            platform=message.platform,
-            group_id=message.group_id,
-            user_id=message.user_id,
-            sender_display_name_snapshot=message.sender_display_name,
-            message_id=message.message_id,
-            matched_keyword=matched_word,
-            matched_content=_matched_excerpt(message.text, matched_word),
-            raw_message_digest=_message_digest(message.text),
-            action_mute_status=ACTION_NOT_SCHEDULED,
-            action_recall_status=ACTION_NOT_SCHEDULED,
-            action_forward_status=ACTION_NOT_SCHEDULED,
-        )
-        try:
-            await asyncio.to_thread(self.repository.record_violation, violation)
-            return True
-        except Exception as exc:
-            logger.error("Chat Filter violation record failed: %s", exc)
-            return False
-
-    def _dehydrate_group_message(self, event: AstrMessageEvent) -> ChatMessage:
-        platform = _safe_value(event.get_platform_name())
-        group_id = _safe_value(event.get_group_id())
-        user_id = _safe_value(event.get_sender_id())
-        text = _safe_value(getattr(event, "message_str", ""))
-        return ChatMessage(
-            platform=platform,
-            group_id=group_id,
-            user_id=user_id,
-            text=text,
-            message_id=_event_value(event, "get_message_id", "message_id"),
-            sender_display_name=_event_value(
-                event,
-                "get_sender_name",
-                "sender_name",
-                "nickname",
-            ),
+        return self.command_gateway.can_use_command(
+            event,
+            allow_group_manager=allow_group_manager,
         )
 
-    def _current_group_key(self, event: AstrMessageEvent) -> str | None:
-        platform = _safe_value(event.get_platform_name())
-        group_id = _safe_value(event.get_group_id())
-        if not group_id:
-            return None
-        return f"{platform}:{group_id}"
+    def _check_global_permission(self, event: AstrMessageEvent) -> bool:
+        return self.command_gateway.check_global_permission(event)
 
-    def _mutable_group_policy(self, group_key: str) -> GroupPolicy:
-        policy = self.state.get_group_policy(group_key)
-        return GroupPolicy(
-            enabled=policy.enabled,
-            inherit_global=policy.inherit_global,
-            custom_words=policy.custom_words,
-        )
+    def _platform_actions_for_event(self, event: AstrMessageEvent) -> PlatformActions:
+        return self.command_gateway.platform_actions_for_event(event)
+
+    def _configured_platform_actions(self) -> PlatformActions | None:
+        return getattr(self, "platform_actions", None)
+
+    def _get_config(self) -> object:
+        return self.context.get_config()
 
     @staticmethod
     def _is_own_command(text: str) -> bool:
         stripped = text.lstrip()
         return any(stripped.startswith(prefix) for prefix in COMMAND_PREFIXES)
-
-
-def _safe_value(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value)
-
-
-def _event_value(event: AstrMessageEvent, *names: str) -> str:
-    for name in names:
-        value = getattr(event, name, None)
-        if callable(value):
-            try:
-                value = value()
-            except Exception:
-                continue
-        if value:
-            return _safe_value(value)
-
-    message_obj = getattr(event, "message_obj", None)
-    if message_obj is not None:
-        for name in names:
-            value = getattr(message_obj, name, None)
-            if value:
-                return _safe_value(value)
-    return ""
-
-
-def _is_valid_qq_group_id(value: str) -> bool:
-    return value.isdigit() and 0 < len(value) <= MAX_QQ_GROUP_ID_LENGTH
-
-
-def _group_push_bindings(bindings: list[PushBinding]) -> dict[str, list[str]]:
-    grouped: dict[str, list[str]] = defaultdict(list)
-    for binding in bindings:
-        grouped[binding.listening_group_id].append(binding.push_group_id)
-    return dict(grouped)
-
-
-def _matched_excerpt(text: str, matched_word: str) -> str:
-    if len(text) <= VIOLATION_EXCERPT_LENGTH:
-        return text
-
-    haystack = text.casefold()
-    needle = matched_word.casefold()
-    index = haystack.find(needle)
-    if index < 0:
-        return text[:VIOLATION_EXCERPT_LENGTH]
-
-    half_window = max((VIOLATION_EXCERPT_LENGTH - len(matched_word)) // 2, 0)
-    start = max(index - half_window, 0)
-    end = min(start + VIOLATION_EXCERPT_LENGTH, len(text))
-    if end - start < VIOLATION_EXCERPT_LENGTH:
-        start = max(end - VIOLATION_EXCERPT_LENGTH, 0)
-    excerpt = text[start:end]
-    if start > 0:
-        excerpt = "..." + excerpt[3:]
-    if end < len(text):
-        excerpt = excerpt[:-3] + "..."
-    return excerpt
-
-
-def _message_digest(text: str) -> str:
-    return sha256(text.encode("utf-8")).hexdigest()

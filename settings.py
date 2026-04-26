@@ -1,23 +1,43 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 
 DEFAULT_WARNING_MESSAGE = "消息触发聊天过滤策略，请调整后重试。"
-DEFAULT_MAX_WORD_COUNT = 200
+DEFAULT_MAX_WORD_COUNT = 500
 DEFAULT_MAX_WORD_LENGTH = 64
-DEFAULT_MUTE_MIN_SECONDS = 60
-DEFAULT_MUTE_MAX_SECONDS = 2_592_000
+DEFAULT_MAX_REGEX_RULE_COUNT = 50
+DEFAULT_MAX_REGEX_RULE_LENGTH = 500
 DEFAULT_MUTE_DURATION_SECONDS = 600
-DEFAULT_REPORT_INTERVAL_DAYS = 7
+DEFAULT_MUTE_ESCALATION_MULTIPLIER = 2
+DEFAULT_MUTE_ESCALATION_RESET_SECONDS = 3600
+MIN_MUTE_DURATION_SECONDS = 10
+MAX_MUTE_DURATION_SECONDS = 2_592_000
+MIN_MUTE_ESCALATION_MULTIPLIER = 1
+MAX_MUTE_ESCALATION_MULTIPLIER = 10
+MIN_MUTE_ESCALATION_RESET_SECONDS = 60
+MAX_MUTE_ESCALATION_RESET_SECONDS = 2_592_000
+DEFAULT_REPORT_DAYS = 7
+DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED = True
+DEFAULT_OBFUSCATED_WORD_MAX_GAP = 4
+MAX_OBFUSCATED_WORD_MAX_GAP = 64
+REGEX_GAP_PLACEHOLDER = "{{GAP}}"
+DEFAULT_REGEX_GAP_MAX = 8
+MAX_REGEX_GAP_MAX = 64
+
+
+@dataclass(frozen=True, slots=True)
+class RegexRule:
+    pattern: str
+    compiled: re.Pattern[str]
 
 
 @dataclass(frozen=True, slots=True)
 class ChatFilterSettings:
     enabled: bool = True
     default_group_enabled: bool = False
-    global_words: tuple[str, ...] = ()
     case_sensitive: bool = False
     stop_event: bool = True
     warn_user: bool = True
@@ -26,10 +46,14 @@ class ChatFilterSettings:
     max_word_length: int = DEFAULT_MAX_WORD_LENGTH
     violation_records_enabled: bool = True
     mute_duration_seconds: int = DEFAULT_MUTE_DURATION_SECONDS
-    mute_min_seconds: int = DEFAULT_MUTE_MIN_SECONDS
-    mute_max_seconds: int = DEFAULT_MUTE_MAX_SECONDS
-    report_files_enabled: bool = False
-    default_report_interval_days: int = DEFAULT_REPORT_INTERVAL_DAYS
+    mute_escalation_multiplier: int = DEFAULT_MUTE_ESCALATION_MULTIPLIER
+    mute_escalation_reset_seconds: int = DEFAULT_MUTE_ESCALATION_RESET_SECONDS
+    default_report_days: int = DEFAULT_REPORT_DAYS
+    obfuscated_word_matching_enabled: bool = (
+        DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED
+    )
+    obfuscated_word_max_gap: int = DEFAULT_OBFUSCATED_WORD_MAX_GAP
+    regex_gap_max: int = DEFAULT_REGEX_GAP_MAX
 
     @classmethod
     def from_config(cls, config: dict[str, Any] | None) -> "ChatFilterSettings":
@@ -46,33 +70,17 @@ class ChatFilterSettings:
             minimum=1,
             maximum=512,
         )
-        mute_min_seconds = _bounded_int(
-            data.get("mute_min_seconds"),
-            default=DEFAULT_MUTE_MIN_SECONDS,
-            minimum=1,
-            maximum=DEFAULT_MUTE_MAX_SECONDS,
-        )
-        mute_max_seconds = _bounded_int(
-            data.get("mute_max_seconds"),
-            default=DEFAULT_MUTE_MAX_SECONDS,
-            minimum=mute_min_seconds,
-            maximum=DEFAULT_MUTE_MAX_SECONDS,
-        )
         mute_duration_seconds = _bounded_int(
             data.get("mute_duration_seconds"),
             default=DEFAULT_MUTE_DURATION_SECONDS,
-            minimum=mute_min_seconds,
-            maximum=mute_max_seconds,
+            minimum=MIN_MUTE_DURATION_SECONDS,
+            maximum=MAX_MUTE_DURATION_SECONDS,
         )
+        case_sensitive = _as_bool(data.get("case_sensitive"), False)
         return cls(
             enabled=_as_bool(data.get("enabled"), True),
             default_group_enabled=_as_bool(data.get("default_group_enabled"), False),
-            global_words=normalize_words(
-                data.get("global_words"),
-                max_count=max_word_count,
-                max_length=max_word_length,
-            ),
-            case_sensitive=_as_bool(data.get("case_sensitive"), False),
+            case_sensitive=case_sensitive,
             stop_event=_as_bool(data.get("stop_event"), True),
             warn_user=_as_bool(data.get("warn_user"), True),
             warning_message=_safe_message(data.get("warning_message")),
@@ -80,14 +88,39 @@ class ChatFilterSettings:
             max_word_length=max_word_length,
             violation_records_enabled=_as_bool(data.get("violation_records_enabled"), True),
             mute_duration_seconds=mute_duration_seconds,
-            mute_min_seconds=mute_min_seconds,
-            mute_max_seconds=mute_max_seconds,
-            report_files_enabled=_as_bool(data.get("report_files_enabled"), False),
-            default_report_interval_days=_bounded_int(
-                data.get("default_report_interval_days"),
-                default=DEFAULT_REPORT_INTERVAL_DAYS,
+            mute_escalation_multiplier=_bounded_int(
+                data.get("mute_escalation_multiplier"),
+                default=DEFAULT_MUTE_ESCALATION_MULTIPLIER,
+                minimum=MIN_MUTE_ESCALATION_MULTIPLIER,
+                maximum=MAX_MUTE_ESCALATION_MULTIPLIER,
+            ),
+            mute_escalation_reset_seconds=_bounded_int(
+                data.get("mute_escalation_reset_seconds"),
+                default=DEFAULT_MUTE_ESCALATION_RESET_SECONDS,
+                minimum=MIN_MUTE_ESCALATION_RESET_SECONDS,
+                maximum=MAX_MUTE_ESCALATION_RESET_SECONDS,
+            ),
+            default_report_days=_bounded_int(
+                data.get("default_report_days", data.get("default_report_interval_days")),
+                default=DEFAULT_REPORT_DAYS,
                 minimum=1,
                 maximum=366,
+            ),
+            obfuscated_word_matching_enabled=_as_bool(
+                data.get("obfuscated_word_matching_enabled"),
+                DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED,
+            ),
+            obfuscated_word_max_gap=_bounded_int(
+                data.get("obfuscated_word_max_gap"),
+                default=DEFAULT_OBFUSCATED_WORD_MAX_GAP,
+                minimum=0,
+                maximum=MAX_OBFUSCATED_WORD_MAX_GAP,
+            ),
+            regex_gap_max=_bounded_int(
+                data.get("regex_gap_max"),
+                default=DEFAULT_REGEX_GAP_MAX,
+                minimum=0,
+                maximum=MAX_REGEX_GAP_MAX,
             ),
         )
 
@@ -127,6 +160,77 @@ def validate_single_word(word: str, *, max_length: int) -> str | None:
     if not cleaned or len(cleaned) > max_length:
         return None
     return cleaned
+
+
+def normalize_regex_rules(
+    value: object,
+    *,
+    case_sensitive: bool,
+    max_count: int,
+    max_length: int,
+    regex_gap_max: int = DEFAULT_REGEX_GAP_MAX,
+) -> tuple[RegexRule, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        items = [value]
+    elif isinstance(value, list | tuple | set):
+        items = list(value)
+    else:
+        return ()
+
+    flags = 0 if case_sensitive else re.IGNORECASE
+    normalized: list[RegexRule] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, str):
+            continue
+        raw_pattern = item.strip()
+        pattern = _expand_regex_gap_placeholder(raw_pattern, regex_gap_max)
+        if (
+            not pattern
+            or len(pattern) > max_length
+            or pattern in seen
+            or _looks_like_high_risk_regex(pattern)
+        ):
+            continue
+        try:
+            compiled = re.compile(pattern, flags)
+        except re.error:
+            continue
+        normalized.append(RegexRule(pattern=pattern, compiled=compiled))
+        seen.add(pattern)
+        if len(normalized) >= max_count:
+            break
+    return tuple(normalized)
+
+
+def _expand_regex_gap_placeholder(pattern: str, regex_gap_max: int) -> str:
+    if REGEX_GAP_PLACEHOLDER not in pattern:
+        return pattern
+    gap_pattern = rf"[\s\S]{{0,{regex_gap_max}}}"
+    return pattern.replace(REGEX_GAP_PLACEHOLDER, gap_pattern)
+
+
+def _looks_like_high_risk_regex(pattern: str) -> bool:
+    if re.search(r"\([^)]*[+*][^)]*\)[+*{]", pattern):
+        return True
+    if re.search(r"(\.\*){2,}", pattern):
+        return True
+    if re.search(r"\\[1-9]", pattern):
+        return True
+    return False
+
+
+def _config_list_or_default(
+    data: dict[str, Any],
+    *,
+    key: str,
+    default: tuple[str, ...],
+) -> object:
+    if key not in data:
+        return default
+    return data[key]
 
 
 def _as_bool(value: object, default: bool) -> bool:
