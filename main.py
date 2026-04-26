@@ -30,6 +30,19 @@ from .violation_records import ViolationRecorder
 
 
 COMMAND_PREFIXES = ("/chatfilter", "/cf", ".cf")
+COMMAND_PERMISSION_DENIED = (
+    "Chat Filter command permission denied: "
+    "requires AstrBot admin or QQ group owner/admin permission."
+)
+GROUP_ENABLE_PERMISSION_DENIED = (
+    "Chat Filter group enable permission denied: "
+    "requires AstrBot admin permission."
+)
+GROUP_ADMIN_EXEMPT_USAGE = (
+    "Usage: .cf group admin-exempt status|enable|disable "
+    "or /chatfilter group admin-exempt status|enable|disable "
+    "(alias: exempt)"
+)
 
 
 class ChatFilterPlugin(Star):
@@ -136,7 +149,6 @@ class ChatFilterPlugin(Star):
     def cf():
         pass
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("bind")
     async def cf_bind(
         self,
@@ -144,6 +156,11 @@ class ChatFilterPlugin(Star):
         listening_group: str = "",
         push_group: str = "",
     ):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         if listening_group == "list" and not push_group:
             yield self._command_result(
@@ -161,7 +178,6 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("mute")
     async def cf_mute(
         self,
@@ -169,6 +185,11 @@ class ChatFilterPlugin(Star):
         group_id: str = "",
         seconds: str = "",
     ):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         if group_id == "list" and not seconds:
             yield self._command_result(
@@ -188,7 +209,6 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("mute-stack")
     async def cf_mute_stack(
         self,
@@ -197,6 +217,11 @@ class ChatFilterPlugin(Star):
         multiplier: str = "",
         reset_seconds: str = "",
     ):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         if group_id == "list" and not multiplier and not reset_seconds:
             yield self._command_result(
@@ -217,9 +242,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("probe")
     async def cf_probe(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         capabilities = self._platform_actions_for_event(event).probe_capabilities(
             snapshot.platform
@@ -229,13 +258,17 @@ class ChatFilterPlugin(Star):
             format_platform_probe(snapshot, capabilities),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("forward-probe")
     async def cf_forward_probe(
         self,
         event: AstrMessageEvent,
         target_group: str = "",
     ):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         yield self._command_result(
             event,
@@ -246,7 +279,6 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("report-dry-run")
     async def cf_report_dry_run(
         self,
@@ -254,6 +286,11 @@ class ChatFilterPlugin(Star):
         listening_group: str = "",
         days: str = "",
     ):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         yield self._command_result(
             event,
@@ -264,13 +301,17 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("file-probe")
     async def cf_file_probe(
         self,
         event: AstrMessageEvent,
         target_group: str = "",
     ):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         snapshot = dehydrate_event_snapshot(event)
         yield self._command_result(
             event,
@@ -281,27 +322,43 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("help")
     async def cf_help(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(event, self.command_service.format_help())
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("status")
     async def cf_status(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(event, self.command_service.format_status())
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("enable")
     async def cf_enable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_global_enabled(True),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf.command("disable")
     async def cf_disable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_global_enabled(False),
@@ -311,9 +368,13 @@ class ChatFilterPlugin(Star):
     def cf_group():
         pass
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf_group.command("status")
     async def cf_group_status(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             self.command_service.format_group_status(
@@ -321,9 +382,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf_group.command("enable")
     async def cf_group_enable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event, allow_group_manager=False)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_group_enabled(
@@ -332,9 +397,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf_group.command("disable")
     async def cf_group_disable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_group_enabled(
@@ -343,9 +412,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf_group.command("add")
     async def cf_group_add(self, event: AstrMessageEvent, word: str):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.add_group_word(
@@ -354,9 +427,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf_group.command("remove")
     async def cf_group_remove(self, event: AstrMessageEvent, word: str):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.remove_group_word(
@@ -365,9 +442,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @cf_group.command("list")
     async def cf_group_list(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             self.command_service.format_group_words(
@@ -375,27 +456,65 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
+    @cf_group.command("admin-exempt")
+    async def cf_group_admin_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield self._command_result(
+            event,
+            await self._group_admin_exempt_command_response(event, action),
+        )
+
+    @cf_group.command("exempt")
+    async def cf_group_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield self._command_result(
+            event,
+            await self._group_admin_exempt_command_response(event, action),
+        )
+
     @chatfilter.command("help")
     async def chatfilter_help(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(event, self.command_service.format_help())
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("status")
     async def chatfilter_status(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(event, self.command_service.format_status())
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("enable")
     async def chatfilter_enable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_global_enabled(True),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter.command("disable")
     async def chatfilter_disable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_global_enabled(False),
@@ -405,9 +524,13 @@ class ChatFilterPlugin(Star):
     def chatfilter_group():
         pass
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("status")
     async def chatfilter_group_status(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             self.command_service.format_group_status(
@@ -415,9 +538,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("enable")
     async def chatfilter_group_enable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event, allow_group_manager=False)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_group_enabled(
@@ -426,9 +553,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("disable")
     async def chatfilter_group_disable(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.set_group_enabled(
@@ -437,9 +568,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("add")
     async def chatfilter_group_add(self, event: AstrMessageEvent, word: str):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.add_group_word(
@@ -448,9 +583,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("remove")
     async def chatfilter_group_remove(self, event: AstrMessageEvent, word: str):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             await self.command_service.remove_group_word(
@@ -459,9 +598,13 @@ class ChatFilterPlugin(Star):
             ),
         )
 
-    @filter.permission_type(filter.PermissionType.ADMIN)
     @chatfilter_group.command("list")
     async def chatfilter_group_list(self, event: AstrMessageEvent):
+        denial = self._command_denial(event)
+        if denial:
+            yield self._command_result(event, denial)
+            return
+
         yield self._command_result(
             event,
             self.command_service.format_group_words(
@@ -469,10 +612,102 @@ class ChatFilterPlugin(Star):
             ),
         )
 
+    @chatfilter_group.command("admin-exempt")
+    async def chatfilter_group_admin_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield self._command_result(
+            event,
+            await self._group_admin_exempt_command_response(event, action),
+        )
+
+    @chatfilter_group.command("exempt")
+    async def chatfilter_group_exempt(
+        self,
+        event: AstrMessageEvent,
+        action: str = "status",
+    ):
+        yield self._command_result(
+            event,
+            await self._group_admin_exempt_command_response(event, action),
+        )
+
     @staticmethod
     def _command_result(event: AstrMessageEvent, text: str):
         event.stop_event()
         return event.plain_result(text)
+
+    async def _group_admin_exempt_command_response(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+    ) -> str:
+        denial = self._command_denial(event)
+        if denial:
+            return denial
+        return await self._group_admin_exempt_command_text(event, action)
+
+    async def _group_admin_exempt_command_text(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+    ) -> str:
+        group_key = current_group_key_from_event(event)
+        normalized_action = action.strip().casefold()
+        if normalized_action in ("", "status"):
+            return self.command_service.format_group_admin_exempt_status(group_key)
+        if normalized_action in ("enable", "enabled", "on", "true", "1"):
+            return await self.command_service.set_group_admin_exempt_enabled(
+                group_key,
+                True,
+            )
+        if normalized_action in ("disable", "disabled", "off", "false", "0"):
+            return await self.command_service.set_group_admin_exempt_enabled(
+                group_key,
+                False,
+            )
+        return GROUP_ADMIN_EXEMPT_USAGE
+
+    def _command_denial(
+        self,
+        event: AstrMessageEvent,
+        *,
+        allow_group_manager: bool = True,
+    ) -> str | None:
+        if self._can_use_command(event, allow_group_manager=allow_group_manager):
+            return None
+        if not allow_group_manager:
+            return GROUP_ENABLE_PERMISSION_DENIED
+        return COMMAND_PERMISSION_DENIED
+
+    def _can_use_command(
+        self,
+        event: AstrMessageEvent,
+        *,
+        allow_group_manager: bool = True,
+    ) -> bool:
+        if self._check_global_permission(event):
+            return True
+        return (
+            allow_group_manager
+            and dehydrate_event_snapshot(event).sender_is_group_manager
+        )
+
+    def _check_global_permission(self, event: AstrMessageEvent) -> bool:
+        snapshot = dehydrate_event_snapshot(event)
+        if not snapshot.sender_id:
+            return False
+        try:
+            config = self.context.get_config()
+        except Exception:
+            return False
+
+        admins = _config_value(config, "admins_id")
+        if admins is None:
+            admins = _config_value(config, "admin_ids")
+        return snapshot.sender_id in _normalized_id_set(admins)
 
     def _platform_actions_for_event(self, event: AstrMessageEvent) -> PlatformActions:
         if self.platform_actions is not None:
@@ -487,3 +722,34 @@ class ChatFilterPlugin(Star):
     def _is_own_command(text: str) -> bool:
         stripped = text.lstrip()
         return any(stripped.startswith(prefix) for prefix in COMMAND_PREFIXES)
+
+
+def _config_value(config: object, key: str) -> object:
+    if hasattr(config, "get"):
+        try:
+            value = config.get(key)
+        except Exception:
+            value = None
+        if value is not None:
+            return value
+    try:
+        return getattr(config, key, None)
+    except Exception:
+        return None
+
+
+def _normalized_id_set(value: object) -> set[str]:
+    if value is None:
+        return set()
+    if isinstance(value, str):
+        return {
+            item
+            for item in (part.strip() for part in value.replace(",", " ").split())
+            if item
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return {item for item in (str(raw).strip() for raw in value) if item}
+    normalized = str(value).strip()
+    if not normalized:
+        return set()
+    return {normalized}

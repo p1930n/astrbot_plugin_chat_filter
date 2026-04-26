@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 class RepositorySchemaError(RuntimeError):
@@ -105,7 +105,7 @@ V1_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
-REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+V2_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     **V1_REQUIRED_TABLE_COLUMNS,
     "global_rules": (
         "id",
@@ -117,6 +117,18 @@ REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "created_at",
     ),
     "legacy_import_meta": ("key", "value", "updated_at"),
+}
+
+
+REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    **V2_REQUIRED_TABLE_COLUMNS,
+    "group_policies": (
+        "group_key",
+        "enabled",
+        "inherit_global",
+        "admin_exempt_enabled",
+        "updated_at",
+    ),
 }
 
 
@@ -136,8 +148,11 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
 
     if current_version == 1:
         _validate_required_schema(connection, V1_REQUIRED_TABLE_COLUMNS)
+    elif current_version == 2:
+        _validate_required_schema(connection, V2_REQUIRED_TABLE_COLUMNS)
 
     _create_schema_objects(connection)
+    _migrate_schema_objects(connection, current_version)
     _validate_required_schema(connection, REQUIRED_TABLE_COLUMNS)
 
     connection.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
@@ -156,6 +171,7 @@ def _create_schema_objects(connection: sqlite3.Connection) -> None:
             group_key TEXT PRIMARY KEY,
             enabled INTEGER NULL,
             inherit_global INTEGER NOT NULL,
+            admin_exempt_enabled INTEGER NOT NULL DEFAULT 1,
             updated_at TEXT NOT NULL
         );
 
@@ -334,6 +350,20 @@ def _create_schema_objects(connection: sqlite3.Connection) -> None:
         );
         """
     )
+
+
+def _migrate_schema_objects(
+    connection: sqlite3.Connection,
+    current_version: int,
+) -> None:
+    _ = current_version
+    if "admin_exempt_enabled" not in _table_columns(connection, "group_policies"):
+        connection.execute(
+            """
+            ALTER TABLE group_policies
+            ADD COLUMN admin_exempt_enabled INTEGER NOT NULL DEFAULT 1
+            """
+        )
 
 
 def _schema_version(connection: sqlite3.Connection) -> int:

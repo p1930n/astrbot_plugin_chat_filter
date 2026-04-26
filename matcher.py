@@ -32,6 +32,8 @@ class ChatFilterMatcher:
         )
         if not group_enabled:
             return MatchResult(matched=False)
+        if policy.admin_exempt_enabled and message.sender_is_group_manager:
+            return MatchResult(matched=False)
 
         words = self._effective_words(
             rule_snapshot.global_words,

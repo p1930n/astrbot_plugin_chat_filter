@@ -1,0 +1,304 @@
+from __future__ import annotations
+
+import sys
+import types
+import unittest
+from pathlib import Path
+
+
+PACKAGE_DIR = Path(__file__).resolve().parent
+PACKAGE_PARENT = PACKAGE_DIR.parent
+if str(PACKAGE_PARENT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_PARENT))
+
+
+def _install_asyncio_stub_if_needed() -> None:
+    try:
+        __import__("asyncio")
+    except OSError:
+        for key in list(sys.modules):
+            if key == "asyncio" or key.startswith("asyncio."):
+                sys.modules.pop(key, None)
+
+        asyncio_module = types.ModuleType("asyncio")
+
+        async def to_thread(func, /, *args, **kwargs):
+            return func(*args, **kwargs)
+
+        asyncio_module.to_thread = to_thread
+        sys.modules["asyncio"] = asyncio_module
+
+
+class _DummyCommandGroup:
+    def __call__(self, func):
+        return self
+
+    def command(self, *_args, **_kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    def group(self, *_args, **_kwargs):
+        def decorator(_func):
+            return _DummyCommandGroup()
+
+        return decorator
+
+
+class _DummyFilter:
+    EventMessageType = types.SimpleNamespace(GROUP_MESSAGE="group_message")
+
+    @staticmethod
+    def event_message_type(*_args, **_kwargs):
+        def decorator(func):
+            return func
+
+        return decorator
+
+    @staticmethod
+    def command_group(*_args, **_kwargs):
+        return _DummyCommandGroup()
+
+
+class _AstrMessageEvent:
+    pass
+
+
+class _Context:
+    pass
+
+
+class _Star:
+    def __init__(self, context):
+        self.context = context
+
+
+class _Logger:
+    @staticmethod
+    def error(*_args, **_kwargs):
+        pass
+
+    @staticmethod
+    def warning(*_args, **_kwargs):
+        pass
+
+
+def _install_astrbot_stubs() -> None:
+    astrbot_module = sys.modules.setdefault("astrbot", types.ModuleType("astrbot"))
+    api_module = sys.modules.setdefault("astrbot.api", types.ModuleType("astrbot.api"))
+    event_module = sys.modules.setdefault(
+        "astrbot.api.event",
+        types.ModuleType("astrbot.api.event"),
+    )
+    star_module = sys.modules.setdefault(
+        "astrbot.api.star",
+        types.ModuleType("astrbot.api.star"),
+    )
+
+    api_module.AstrBotConfig = dict
+    api_module.logger = getattr(api_module, "logger", _Logger())
+    event_module.AstrMessageEvent = getattr(
+        event_module,
+        "AstrMessageEvent",
+        _AstrMessageEvent,
+    )
+    event_module.filter = _DummyFilter()
+    star_module.Context = getattr(star_module, "Context", _Context)
+    star_module.Star = getattr(star_module, "Star", _Star)
+    astrbot_module.api = api_module
+    api_module.event = event_module
+    api_module.star = star_module
+
+
+_install_asyncio_stub_if_needed()
+_install_astrbot_stubs()
+
+from astrbot_plugin_chat_filter.main import (  # noqa: E402
+    GROUP_ENABLE_PERMISSION_DENIED,
+    ChatFilterPlugin,
+)
+
+
+class MainCommandPermissionTests(unittest.TestCase):
+    def test_group_owner_and_admin_can_use_normal_commands(self) -> None:
+        plugin = _plugin(admins=())
+
+        for role in ("owner", "admin"):
+            with self.subTest(role=role):
+                self.assertTrue(
+                    plugin._can_use_command(_event(sender_id="200", role=role))
+                )
+
+    def test_plain_group_member_cannot_use_normal_commands(self) -> None:
+        plugin = _plugin(admins=())
+
+        self.assertFalse(
+            plugin._can_use_command(_event(sender_id="200", role="member"))
+        )
+
+    def test_astrbot_admin_can_use_normal_commands(self) -> None:
+        plugin = _plugin(admins=("200",))
+
+        self.assertTrue(
+            plugin._can_use_command(_event(sender_id="200", role="member"))
+        )
+
+    def test_group_enable_denies_group_admin_when_managers_disallowed(
+        self,
+    ) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin")
+
+        results = _collect_async_generator(plugin.cf_group_enable(event))
+
+        self.assertEqual(results, [GROUP_ENABLE_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [])
+
+    def test_group_enable_allows_astrbot_admin_when_managers_disallowed(
+        self,
+    ) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=("200",), command_service=command_service)
+        event = _event(sender_id="200", role="member")
+
+        results = _collect_async_generator(plugin.cf_group_enable(event))
+
+        self.assertEqual(results, ["Chat Filter enabled for this group."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [("qq:100", True)])
+
+    def test_admin_exempt_command_text_toggles_service(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(command_service=command_service)
+        event = _event()
+
+        disabled = _await(
+            plugin._group_admin_exempt_command_text(event, "disable")
+        )
+        enabled = _await(plugin._group_admin_exempt_command_text(event, "enable"))
+
+        self.assertEqual(
+            disabled,
+            "Chat Filter admin exemption disabled for this group.",
+        )
+        self.assertEqual(
+            enabled,
+            "Chat Filter admin exemption enabled for this group.",
+        )
+        self.assertEqual(
+            command_service.admin_exempt_calls,
+            [("qq:100", False), ("qq:100", True)],
+        )
+
+
+class _Config:
+    def __init__(self, admins: tuple[str, ...]) -> None:
+        self._admins = admins
+
+    def get(self, key: str):
+        if key == "admins_id":
+            return self._admins
+        return None
+
+
+class _ContextWithConfig:
+    def __init__(self, admins: tuple[str, ...]) -> None:
+        self._config = _Config(admins)
+
+    def get_config(self):
+        return self._config
+
+
+class _Event:
+    def __init__(
+        self,
+        *,
+        platform_name: str,
+        group_id: str,
+        sender_id: str,
+        role: str,
+    ) -> None:
+        self.platform_name = platform_name
+        self.group_id = group_id
+        self.sender_id = sender_id
+        self.sender_role = role
+        self.role = role
+        self.stopped = False
+
+    def stop_event(self) -> None:
+        self.stopped = True
+
+    def plain_result(self, text: str) -> str:
+        return text
+
+
+class _CommandService:
+    def __init__(self) -> None:
+        self.group_enabled_calls: list[tuple[str | None, bool]] = []
+        self.admin_exempt_calls: list[tuple[str | None, bool]] = []
+
+    async def set_group_enabled(self, group_key: str | None, enabled: bool) -> str:
+        self.group_enabled_calls.append((group_key, enabled))
+        if enabled:
+            return "Chat Filter enabled for this group."
+        return "Chat Filter disabled for this group."
+
+    async def set_group_admin_exempt_enabled(
+        self,
+        group_key: str | None,
+        enabled: bool,
+    ) -> str:
+        self.admin_exempt_calls.append((group_key, enabled))
+        if enabled:
+            return "Chat Filter admin exemption enabled for this group."
+        return "Chat Filter admin exemption disabled for this group."
+
+
+def _plugin(
+    *,
+    admins: tuple[str, ...] = (),
+    command_service: _CommandService | None = None,
+) -> ChatFilterPlugin:
+    plugin = object.__new__(ChatFilterPlugin)
+    plugin.context = _ContextWithConfig(admins)
+    plugin.command_service = command_service or _CommandService()
+    return plugin
+
+
+def _event(
+    *,
+    sender_id: str = "200",
+    role: str = "member",
+    platform_name: str = "qq",
+    group_id: str = "100",
+) -> _Event:
+    return _Event(
+        platform_name=platform_name,
+        group_id=group_id,
+        sender_id=sender_id,
+        role=role,
+    )
+
+
+def _await(awaitable):
+    try:
+        awaitable.send(None)
+    except StopIteration as exc:
+        return exc.value
+    raise AssertionError("awaitable yielded instead of completing synchronously")
+
+
+def _collect_async_generator(async_generator) -> list[object]:
+    items: list[object] = []
+    while True:
+        try:
+            items.append(_await(async_generator.__anext__()))
+        except StopAsyncIteration:
+            return items
+
+
+if __name__ == "__main__":
+    unittest.main()

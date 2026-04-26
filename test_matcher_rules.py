@@ -10,9 +10,6 @@ PACKAGE_PARENT = PACKAGE_DIR.parent
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
-from astrbot_plugin_chat_filter.command_service import (  # noqa: E402
-    ChatFilterCommandService,
-)
 from astrbot_plugin_chat_filter.matcher import ChatFilterMatcher  # noqa: E402
 from astrbot_plugin_chat_filter.models import (  # noqa: E402
     ChatMessage,
@@ -98,6 +95,97 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertTrue(regex_result.matched)
         self.assertEqual(regex_result.matched_word, "regex:^root$")
         self.assertEqual(regex_result.word_count, 2)
+
+    def test_matcher_skips_group_manager_when_admin_exemption_enabled(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {"enabled": True, "default_group_enabled": True}
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "blocked")],
+            settings=settings,
+        )
+        matcher = ChatFilterMatcher()
+
+        owner_result = matcher.detect(
+            _message("blocked", sender_role="owner"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+        admin_result = matcher.detect(
+            _message("blocked", sender_role="admin"),
+            settings,
+            RuntimeState(),
+            snapshot,
+        )
+
+        self.assertFalse(owner_result.matched)
+        self.assertFalse(admin_result.matched)
+
+    def test_matcher_checks_group_manager_when_admin_exemption_disabled(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {"enabled": True, "default_group_enabled": True}
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "blocked")],
+            settings=settings,
+        )
+        state = RuntimeState(
+            groups={
+                "qq:200": GroupPolicy(
+                    enabled=True,
+                    admin_exempt_enabled=False,
+                )
+            }
+        )
+
+        result = ChatFilterMatcher().detect(
+            _message("blocked", sender_role="admin"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertTrue(result.matched)
+        self.assertEqual(result.matched_word, "blocked")
+
+    def test_matcher_applies_admin_exemption_per_group(self) -> None:
+        settings = ChatFilterSettings.from_config(
+            {"enabled": True, "default_group_enabled": True}
+        )
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "blocked")],
+            settings=settings,
+        )
+        state = RuntimeState(
+            groups={
+                "qq:200": GroupPolicy(
+                    enabled=True,
+                    admin_exempt_enabled=False,
+                ),
+                "qq:201": GroupPolicy(
+                    enabled=True,
+                    admin_exempt_enabled=True,
+                ),
+            }
+        )
+        matcher = ChatFilterMatcher()
+
+        disabled_group_result = matcher.detect(
+            _message("blocked", group_id="200", sender_role="admin"),
+            settings,
+            state,
+            snapshot,
+        )
+        enabled_group_result = matcher.detect(
+            _message("blocked", group_id="201", sender_role="admin"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertTrue(disabled_group_result.matched)
+        self.assertFalse(enabled_group_result.matched)
 
     def test_matcher_detects_obfuscated_words_with_short_gaps(self) -> None:
         settings = ChatFilterSettings.from_config(
@@ -290,6 +378,10 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(bool_gap.regex_gap_max, 8)
 
     def test_status_uses_snapshot_summary_not_settings_global_words(self) -> None:
+        from astrbot_plugin_chat_filter.command_service import (  # noqa: E402
+            ChatFilterCommandService,
+        )
+
         settings = ChatFilterSettings.from_config({"default_group_enabled": True})
         snapshot = RuleSnapshot(
             global_words=("alpha", "beta"),
@@ -316,12 +408,18 @@ class FakeLogger:
         raise AssertionError("format_status should not log warnings")
 
 
-def _message(text: str, *, group_id: str = "200") -> ChatMessage:
+def _message(
+    text: str,
+    *,
+    group_id: str = "200",
+    sender_role: str = "",
+) -> ChatMessage:
     return ChatMessage(
         platform="qq",
         group_id=group_id,
         user_id="u1",
         text=text,
+        sender_role=sender_role,
     )
 
 

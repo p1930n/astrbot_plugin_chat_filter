@@ -85,6 +85,8 @@ class ChatFilterCommandService:
             "Chat Filter commands: "
             ".cf status; .cf enable; .cf disable; "
             ".cf group status|enable|disable|add|remove|list; "
+            ".cf group admin-exempt status|enable|disable (alias: exempt); "
+            "/chatfilter group admin-exempt status|enable|disable; "
             ".cf bind; .cf mute; .cf mute-stack; "
             ".cf probe; .cf forward-probe; .cf report-dry-run; .cf file-probe."
         )
@@ -111,6 +113,7 @@ class ChatFilterCommandService:
             "Chat Filter group status: "
             f"group={'enabled' if effective_enabled else 'disabled'}, "
             f"inherit_global={'enabled' if policy.inherit_global else 'disabled'}, "
+            f"admin_exempt={'enabled' if policy.admin_exempt_enabled else 'disabled'}, "
             f"custom_words={len(policy.custom_words)}."
         )
 
@@ -126,6 +129,33 @@ class ChatFilterCommandService:
         if enabled:
             return "Chat Filter enabled for this group."
         return "Chat Filter disabled for this group."
+
+    async def set_group_admin_exempt_enabled(
+        self,
+        group_key: str | None,
+        enabled: bool,
+    ) -> str:
+        if group_key is None:
+            return "This command must be used in a group chat."
+
+        policy = self._mutable_group_policy(group_key)
+        policy.admin_exempt_enabled = enabled
+        self._state.set_group_policy(group_key, policy)
+        if not await self._try_save_state():
+            return "Chat Filter state update failed."
+        if enabled:
+            return "Chat Filter admin exemption enabled for this group."
+        return "Chat Filter admin exemption disabled for this group."
+
+    def format_group_admin_exempt_status(self, group_key: str | None) -> str:
+        if group_key is None:
+            return "This command must be used in a group chat."
+
+        policy = self._state.get_group_policy(group_key)
+        return (
+            "Chat Filter group admin exemption: "
+            f"{'enabled' if policy.admin_exempt_enabled else 'disabled'}."
+        )
 
     async def add_group_word(self, group_key: str | None, word: str) -> str:
         if group_key is None:
@@ -419,6 +449,7 @@ class ChatFilterCommandService:
         return GroupPolicy(
             enabled=policy.enabled,
             inherit_global=policy.inherit_global,
+            admin_exempt_enabled=policy.admin_exempt_enabled,
             custom_words=policy.custom_words,
         )
 

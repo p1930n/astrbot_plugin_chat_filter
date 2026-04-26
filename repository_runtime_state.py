@@ -63,16 +63,27 @@ class RuntimeStateRepositoryMixin:
         global_enabled = optional_bool_from_int(row[0]) if row else None
 
         groups: dict[str, GroupPolicy] = {}
-        for group_key, enabled, inherit_global in connection.execute(
+        for (
+            group_key,
+            enabled,
+            inherit_global,
+            admin_exempt_enabled,
+        ) in connection.execute(
             """
-            SELECT group_key, enabled, inherit_global
+            SELECT group_key, enabled, inherit_global, admin_exempt_enabled
             FROM group_policies
             ORDER BY group_key
             """
         ):
+            parsed_admin_exempt_enabled = optional_bool_from_int(admin_exempt_enabled)
             groups[group_key] = GroupPolicy(
                 enabled=optional_bool_from_int(enabled),
                 inherit_global=bool(inherit_global),
+                admin_exempt_enabled=(
+                    True
+                    if parsed_admin_exempt_enabled is None
+                    else parsed_admin_exempt_enabled
+                ),
             )
 
         raw_words: dict[str, list[str]] = {}
@@ -90,6 +101,7 @@ class RuntimeStateRepositoryMixin:
             groups[group_key] = GroupPolicy(
                 enabled=policy.enabled,
                 inherit_global=policy.inherit_global,
+                admin_exempt_enabled=policy.admin_exempt_enabled,
                 custom_words=normalize_words(
                     words,
                     max_count=self._max_word_count,
@@ -120,14 +132,16 @@ class RuntimeStateRepositoryMixin:
                         group_key,
                         enabled,
                         inherit_global,
+                        admin_exempt_enabled,
                         updated_at
                     )
-                    VALUES (?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?)
                     """,
                     (
                         group_key,
                         optional_bool_to_int(policy.enabled),
                         int(policy.inherit_global),
+                        int(policy.admin_exempt_enabled),
                         now,
                     ),
                 )
@@ -152,6 +166,10 @@ class RuntimeStateRepositoryMixin:
             groups[key] = GroupPolicy(
                 enabled=optional_bool(raw_policy.get("enabled")),
                 inherit_global=bool_or_default(raw_policy.get("inherit_global"), True),
+                admin_exempt_enabled=bool_or_default(
+                    raw_policy.get("admin_exempt_enabled"),
+                    True,
+                ),
                 custom_words=normalize_words(
                     raw_policy.get("custom_words"),
                     max_count=self._max_word_count,

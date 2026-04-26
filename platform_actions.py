@@ -322,6 +322,7 @@ def format_platform_probe(
             f"group_id={_field_state(snapshot.group_id)}",
             f"sender_id={_field_state(snapshot.sender_id)}",
             f"message_id={_field_state(snapshot.message_id)}",
+            f"sender_role={_field_state(snapshot.sender_role)}",
             f"sender_name={_field_state(snapshot.sender_display_name)}",
             f"group_name={_field_state(snapshot.group_display_name)}",
             f"mute_user={_capability_state(capabilities.mute_user)}",
