@@ -1,57 +1,39 @@
 from __future__ import annotations
 
-import asyncio
-from collections import defaultdict
-from typing import Protocol
-
+from .command_runtime import (
+    CommandLogger,
+    CommandRuntimeService,
+    load_runtime_state,
+)
+from .command_validation import (
+    BIND_LIST_LIMIT as _BIND_LIST_LIMIT,
+    MAX_QQ_GROUP_ID_LENGTH as _MAX_QQ_GROUP_ID_LENGTH,
+    is_valid_qq_group_id,
+    parse_mute_duration,
+    parse_mute_escalation_multiplier,
+    parse_mute_escalation_reset_seconds,
+)
+from .forward_probe_service import (
+    FORWARD_PROBE_TEXT as _FORWARD_PROBE_TEXT,
+    ForwardProbeService,
+)
+from .global_command_service import GlobalCommandService
+from .group_policy_command_service import GroupPolicyCommandService
 from .models import GroupPolicy, PlatformEventSnapshot, PushBinding, RuntimeState
-from .platform_actions import (
-    ForwardMessageNode,
-    PlatformActions,
-    SendForwardMessageRequest,
+from .mute_policy_command_service import MutePolicyCommandService
+from .platform_actions import PlatformActions
+from .push_binding_command_service import (
+    PushBindingCommandService,
+    group_push_bindings,
 )
-from .repository import ChatFilterRepository, RepositorySchemaError
+from .repository import ChatFilterRepository
 from .rule_snapshot import RuleSnapshot
-from .settings import (
-    MAX_MUTE_DURATION_SECONDS,
-    MAX_MUTE_ESCALATION_MULTIPLIER,
-    MAX_MUTE_ESCALATION_RESET_SECONDS,
-    MIN_MUTE_DURATION_SECONDS,
-    MIN_MUTE_ESCALATION_MULTIPLIER,
-    MIN_MUTE_ESCALATION_RESET_SECONDS,
-    ChatFilterSettings,
-    validate_single_word,
-)
+from .settings import ChatFilterSettings
 
 
-BIND_LIST_LIMIT = 20
-MAX_QQ_GROUP_ID_LENGTH = 20
-FORWARD_PROBE_TEXT = "phase04b forward probe"
-
-
-class CommandLogger(Protocol):
-    def error(self, message: str, *args: object) -> None:
-        ...
-
-    def warning(self, message: str, *args: object) -> None:
-        ...
-
-
-def load_runtime_state(
-    repository: ChatFilterRepository,
-    logger: CommandLogger,
-) -> RuntimeState:
-    try:
-        return repository.load()
-    except RepositorySchemaError:
-        raise
-    except Exception as exc:
-        logger.warning(
-            "Chat Filter state load failed; using empty runtime state: "
-            "error_type=%s",
-            type(exc).__name__,
-        )
-        return RuntimeState()
+BIND_LIST_LIMIT = _BIND_LIST_LIMIT
+MAX_QQ_GROUP_ID_LENGTH = _MAX_QQ_GROUP_ID_LENGTH
+FORWARD_PROBE_TEXT = _FORWARD_PROBE_TEXT
 
 
 class ChatFilterCommandService:
@@ -69,138 +51,65 @@ class ChatFilterCommandService:
         self._rule_snapshot = rule_snapshot
         self._logger = logger
 
-    def format_status(self) -> str:
-        enabled = self._state.effective_global_enabled(self._settings.enabled)
-        group_count = len(self._state.groups)
-        global_word_count = self._rule_snapshot.global_word_count
-        return (
-            "Chat Filter status: "
-            f"global={'enabled' if enabled else 'disabled'}, "
-            f"default_group={'enabled' if self._settings.default_group_enabled else 'disabled'}, "
-            f"global_words={global_word_count}, groups={group_count}."
+        self._runtime = CommandRuntimeService(repository, state, logger)
+        self._global_commands = GlobalCommandService(
+            state,
+            settings,
+            rule_snapshot,
+            self._runtime,
         )
+        self._group_policy_commands = GroupPolicyCommandService(
+            state,
+            settings,
+            self._runtime,
+        )
+        self._push_binding_commands = PushBindingCommandService(repository, logger)
+        self._mute_policy_commands = MutePolicyCommandService(
+            repository,
+            settings,
+            logger,
+        )
+        self._forward_probe_service = ForwardProbeService()
+
+    def format_status(self) -> str:
+        return self._global_commands.format_status()
 
     def format_help(self) -> str:
-        return (
-            "Chat Filter commands: "
-            ".cf status; .cf enable; .cf disable; "
-            ".cf group status|enable|disable|add|remove|list; "
-            ".cf group admin-exempt status|enable|disable (alias: exempt); "
-            "/chatfilter group admin-exempt status|enable|disable; "
-            ".cf bind; .cf mute; .cf mute-stack; "
-            ".cf probe; .cf forward-probe; .cf report-dry-run; .cf file-probe."
-        )
+        return self._global_commands.format_help()
 
     async def set_global_enabled(self, enabled: bool) -> str:
-        self._state.global_enabled = enabled
-        if not await self._try_save_state():
-            return "Chat Filter state update failed."
-        if enabled:
-            return "Chat Filter enabled globally."
-        return "Chat Filter disabled globally."
+        return await self._global_commands.set_global_enabled(enabled)
 
     def format_group_status(self, group_key: str | None) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        policy = self._state.get_group_policy(group_key)
-        effective_enabled = (
-            self._settings.default_group_enabled
-            if policy.enabled is None
-            else policy.enabled
-        )
-        return (
-            "Chat Filter group status: "
-            f"group={'enabled' if effective_enabled else 'disabled'}, "
-            f"inherit_global={'enabled' if policy.inherit_global else 'disabled'}, "
-            f"admin_exempt={'enabled' if policy.admin_exempt_enabled else 'disabled'}, "
-            f"custom_words={len(policy.custom_words)}."
-        )
+        return self._group_policy_commands.format_group_status(group_key)
 
     async def set_group_enabled(self, group_key: str | None, enabled: bool) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        policy = self._mutable_group_policy(group_key)
-        policy.enabled = enabled
-        self._state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            return "Chat Filter state update failed."
-        if enabled:
-            return "Chat Filter enabled for this group."
-        return "Chat Filter disabled for this group."
+        return await self._group_policy_commands.set_group_enabled(
+            group_key,
+            enabled,
+        )
 
     async def set_group_admin_exempt_enabled(
         self,
         group_key: str | None,
         enabled: bool,
     ) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        policy = self._mutable_group_policy(group_key)
-        policy.admin_exempt_enabled = enabled
-        self._state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            return "Chat Filter state update failed."
-        if enabled:
-            return "Chat Filter admin exemption enabled for this group."
-        return "Chat Filter admin exemption disabled for this group."
+        return await self._group_policy_commands.set_group_admin_exempt_enabled(
+            group_key,
+            enabled,
+        )
 
     def format_group_admin_exempt_status(self, group_key: str | None) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        policy = self._state.get_group_policy(group_key)
-        return (
-            "Chat Filter group admin exemption: "
-            f"{'enabled' if policy.admin_exempt_enabled else 'disabled'}."
-        )
+        return self._group_policy_commands.format_group_admin_exempt_status(group_key)
 
     async def add_group_word(self, group_key: str | None, word: str) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        cleaned = validate_single_word(
-            word,
-            max_length=self._settings.max_word_length,
-        )
-        if cleaned is None:
-            return "Invalid word length."
-
-        policy = self._mutable_group_policy(group_key)
-        if cleaned in policy.custom_words:
-            return "Group word already exists."
-        if len(policy.custom_words) >= self._settings.max_word_count:
-            return "Group word limit reached."
-
-        policy.custom_words = (*policy.custom_words, cleaned)
-        self._state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            return "Chat Filter state update failed."
-        return "Group word added."
+        return await self._group_policy_commands.add_group_word(group_key, word)
 
     async def remove_group_word(self, group_key: str | None, word: str) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        policy = self._mutable_group_policy(group_key)
-        remaining = tuple(item for item in policy.custom_words if item != word.strip())
-        if len(remaining) == len(policy.custom_words):
-            return "Group word not found."
-
-        policy.custom_words = remaining
-        self._state.set_group_policy(group_key, policy)
-        if not await self._try_save_state():
-            return "Chat Filter state update failed."
-        return "Group word removed."
+        return await self._group_policy_commands.remove_group_word(group_key, word)
 
     def format_group_words(self, group_key: str | None) -> str:
-        if group_key is None:
-            return "This command must be used in a group chat."
-
-        policy = self._state.get_group_policy(group_key)
-        return f"Group custom word count: {len(policy.custom_words)}."
+        return self._group_policy_commands.format_group_words(group_key)
 
     async def add_push_binding(
         self,
@@ -209,62 +118,14 @@ class ChatFilterCommandService:
         listening_group_id: str,
         push_group_id: str,
     ) -> str:
-        if not _is_valid_qq_group_id(listening_group_id) or not _is_valid_qq_group_id(
-            push_group_id
-        ):
-            return (
-                "Usage: .cf bind [listening group] [push group] "
-                "or /cf bind [listening group] [push group]"
-            )
-
-        if not snapshot.platform:
-            return "Chat Filter bind failed: platform is unavailable."
-
-        try:
-            count = await asyncio.to_thread(
-                self._repository.add_push_binding,
-                platform=snapshot.platform,
-                listening_group_id=listening_group_id,
-                push_group_id=push_group_id,
-                created_by=snapshot.sender_id,
-            )
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter push binding update failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return "Chat Filter bind failed."
-
-        return (
-            "Chat Filter bind updated: "
-            f"{listening_group_id} has {count} push group(s)."
+        return await self._push_binding_commands.add_push_binding(
+            snapshot,
+            listening_group_id=listening_group_id,
+            push_group_id=push_group_id,
         )
 
     async def format_push_bindings(self, platform: str) -> str:
-        if not platform:
-            return "Chat Filter bind list failed: platform is unavailable."
-        try:
-            bindings = await asyncio.to_thread(
-                self._repository.list_push_bindings,
-                platform=platform,
-            )
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter push binding list failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return "Chat Filter bind list failed."
-
-        if not bindings:
-            return "Chat Filter bind list is empty."
-        grouped = _group_push_bindings(bindings)
-        lines = [
-            f"{listening_group}: {', '.join(push_groups)}"
-            for listening_group, push_groups in list(grouped.items())[:BIND_LIST_LIMIT]
-        ]
-        if len(grouped) > BIND_LIST_LIMIT:
-            lines.append(f"... and {len(grouped) - BIND_LIST_LIMIT} more group(s).")
-        return "Chat Filter bind list:\n" + "\n".join(lines)
+        return await self._push_binding_commands.format_push_bindings(platform)
 
     async def set_group_mute_duration(
         self,
@@ -273,60 +134,14 @@ class ChatFilterCommandService:
         group_id: str,
         seconds: str,
     ) -> str:
-        if not _is_valid_qq_group_id(group_id):
-            return "Usage: .cf mute [group] [seconds] or /cf mute [group] [seconds]"
-
-        duration = _parse_mute_duration(seconds)
-        if duration is None:
-            return "Invalid mute duration seconds."
-
-        if not snapshot.platform:
-            return "Chat Filter mute policy update failed: platform is unavailable."
-
-        try:
-            await asyncio.to_thread(
-                self._repository.set_group_mute_duration,
-                platform=snapshot.platform,
-                group_id=group_id,
-                mute_duration_seconds=duration,
-                updated_by=snapshot.sender_id,
-            )
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter group mute policy update failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return "Chat Filter mute policy update failed."
-
-        return (
-            "Chat Filter mute policy updated: "
-            f"{group_id} -> {duration} second(s)."
+        return await self._mute_policy_commands.set_group_mute_duration(
+            snapshot,
+            group_id=group_id,
+            seconds=seconds,
         )
 
     async def format_group_mute_policies(self, platform: str) -> str:
-        if not platform:
-            return "Chat Filter mute policy list failed: platform is unavailable."
-        try:
-            policies = await asyncio.to_thread(
-                self._repository.list_group_mute_policies,
-                platform=platform,
-            )
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter group mute policy list failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return "Chat Filter mute policy list failed."
-
-        if not policies:
-            return "Chat Filter mute policy list is empty."
-        lines = [
-            f"{policy.group_id}: {policy.mute_duration_seconds} second(s)"
-            for policy in policies[:BIND_LIST_LIMIT]
-        ]
-        if len(policies) > BIND_LIST_LIMIT:
-            lines.append(f"... and {len(policies) - BIND_LIST_LIMIT} more group(s).")
-        return "Chat Filter mute policy list:\n" + "\n".join(lines)
+        return await self._mute_policy_commands.format_group_mute_policies(platform)
 
     async def set_group_mute_escalation(
         self,
@@ -336,71 +151,17 @@ class ChatFilterCommandService:
         multiplier: str,
         reset_seconds: str,
     ) -> str:
-        if not _is_valid_qq_group_id(group_id):
-            return (
-                "Usage: .cf mute-stack [group] [multiplier] [reset_seconds] "
-                "or /cf mute-stack [group] [multiplier] [reset_seconds]"
-            )
-
-        parsed_multiplier = _parse_mute_escalation_multiplier(multiplier)
-        parsed_reset_seconds = _parse_mute_escalation_reset_seconds(reset_seconds)
-        if parsed_multiplier is None:
-            return "Invalid mute escalation multiplier."
-        if parsed_reset_seconds is None:
-            return "Invalid mute escalation reset seconds."
-
-        if not snapshot.platform:
-            return "Chat Filter mute escalation update failed: platform is unavailable."
-
-        try:
-            await asyncio.to_thread(
-                self._repository.set_group_mute_escalation_policy,
-                platform=snapshot.platform,
-                group_id=group_id,
-                multiplier=parsed_multiplier,
-                reset_seconds=parsed_reset_seconds,
-                updated_by=snapshot.sender_id,
-            )
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter mute escalation policy update failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return "Chat Filter mute escalation update failed."
-
-        return (
-            "Chat Filter mute escalation updated: "
-            f"{group_id} -> {parsed_multiplier}x, reset {parsed_reset_seconds}s."
+        return await self._mute_policy_commands.set_group_mute_escalation(
+            snapshot,
+            group_id=group_id,
+            multiplier=multiplier,
+            reset_seconds=reset_seconds,
         )
 
     async def format_group_mute_escalation_policies(self, platform: str) -> str:
-        if not platform:
-            return "Chat Filter mute escalation list failed: platform is unavailable."
-        try:
-            policies = await asyncio.to_thread(
-                self._repository.list_group_mute_escalation_policies,
-                platform=platform,
-            )
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter mute escalation policy list failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return "Chat Filter mute escalation list failed."
-
-        if not policies:
-            return (
-                "Chat Filter mute escalation policy list is empty; "
-                f"default is {self._settings.mute_escalation_multiplier}x, "
-                f"reset {self._settings.mute_escalation_reset_seconds}s."
-            )
-        lines = [
-            f"{policy.group_id}: {policy.multiplier}x, reset {policy.reset_seconds}s"
-            for policy in policies[:BIND_LIST_LIMIT]
-        ]
-        if len(policies) > BIND_LIST_LIMIT:
-            lines.append(f"... and {len(policies) - BIND_LIST_LIMIT} more group(s).")
-        return "Chat Filter mute escalation policy list:\n" + "\n".join(lines)
+        return await self._mute_policy_commands.format_group_mute_escalation_policies(
+            platform
+        )
 
     async def run_forward_probe(
         self,
@@ -408,94 +169,41 @@ class ChatFilterCommandService:
         platform_actions: PlatformActions,
         target_group_id: str,
     ) -> str:
-        group_id = target_group_id.strip() or snapshot.group_id
-        if not _is_valid_qq_group_id(group_id):
-            return "Usage: .cf forward-probe [group] or /cf forward-probe [group]"
-        if not snapshot.platform:
-            return "Chat Filter forward probe failed: platform is unavailable."
-        if not snapshot.sender_id:
-            return "Chat Filter forward probe failed: sender is unavailable."
-
-        result = await platform_actions.send_forward_message(
-            SendForwardMessageRequest(
-                platform=snapshot.platform,
-                target_group_id=group_id,
-                nodes=(
-                    ForwardMessageNode(
-                        sender_id=snapshot.sender_id,
-                        sender_display_name=snapshot.sender_display_name,
-                        text=FORWARD_PROBE_TEXT,
-                    ),
-                ),
-            )
+        return await self._forward_probe_service.run_forward_probe(
+            snapshot,
+            platform_actions,
+            target_group_id,
         )
-        if result.reason:
-            return f"Chat Filter forward probe: {result.status} ({result.reason})."
-        return f"Chat Filter forward probe: {result.status}."
 
     async def _try_save_state(self) -> bool:
-        try:
-            await asyncio.to_thread(self._repository.save, self._state)
-        except Exception as exc:
-            self._logger.error(
-                "Chat Filter state save failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return False
-        return True
+        return await self._runtime.try_save_state()
 
     def _mutable_group_policy(self, group_key: str) -> GroupPolicy:
-        policy = self._state.get_group_policy(group_key)
-        return GroupPolicy(
-            enabled=policy.enabled,
-            inherit_global=policy.inherit_global,
-            admin_exempt_enabled=policy.admin_exempt_enabled,
-            custom_words=policy.custom_words,
-        )
+        return self._runtime.mutable_group_policy(group_key)
 
 
 def _is_valid_qq_group_id(value: str) -> bool:
-    return value.isdigit() and 0 < len(value) <= MAX_QQ_GROUP_ID_LENGTH
+    return is_valid_qq_group_id(value)
 
 
 def _group_push_bindings(bindings: list[PushBinding]) -> dict[str, list[str]]:
-    grouped: dict[str, list[str]] = defaultdict(list)
-    for binding in bindings:
-        grouped[binding.listening_group_id].append(binding.push_group_id)
-    return dict(grouped)
+    return group_push_bindings(bindings)
 
 
 def _parse_mute_duration(value: str) -> int | None:
-    try:
-        seconds = int(value.strip(), 10)
-    except ValueError:
-        return None
-    if seconds < MIN_MUTE_DURATION_SECONDS or seconds > MAX_MUTE_DURATION_SECONDS:
-        return None
-    return seconds
+    return parse_mute_duration(value)
 
 
 def _parse_mute_escalation_multiplier(value: str) -> int | None:
-    try:
-        multiplier = int(value.strip(), 10)
-    except ValueError:
-        return None
-    if (
-        multiplier < MIN_MUTE_ESCALATION_MULTIPLIER
-        or multiplier > MAX_MUTE_ESCALATION_MULTIPLIER
-    ):
-        return None
-    return multiplier
+    return parse_mute_escalation_multiplier(value)
 
 
 def _parse_mute_escalation_reset_seconds(value: str) -> int | None:
-    try:
-        seconds = int(value.strip(), 10)
-    except ValueError:
-        return None
-    if (
-        seconds < MIN_MUTE_ESCALATION_RESET_SECONDS
-        or seconds > MAX_MUTE_ESCALATION_RESET_SECONDS
-    ):
-        return None
-    return seconds
+    return parse_mute_escalation_reset_seconds(value)
+
+
+__all__ = [
+    "ChatFilterCommandService",
+    "CommandLogger",
+    "load_runtime_state",
+]

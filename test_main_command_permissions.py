@@ -15,7 +15,7 @@ if str(PACKAGE_PARENT) not in sys.path:
 def _install_asyncio_stub_if_needed() -> None:
     try:
         __import__("asyncio")
-    except OSError:
+    except Exception:
         for key in list(sys.modules):
             if key == "asyncio" or key.startswith("asyncio."):
                 sys.modules.pop(key, None)
@@ -115,34 +115,45 @@ _install_asyncio_stub_if_needed()
 _install_astrbot_stubs()
 
 from astrbot_plugin_chat_filter.main import (  # noqa: E402
+    COMMAND_PERMISSION_DENIED,
+    GROUP_ADMIN_EXEMPT_USAGE,
     GROUP_ENABLE_PERMISSION_DENIED,
     ChatFilterPlugin,
 )
 
 
 class MainCommandPermissionTests(unittest.TestCase):
-    def test_group_owner_and_admin_can_use_normal_commands(self) -> None:
-        plugin = _plugin(admins=())
-
+    def test_group_owner_and_admin_can_use_normal_command_gateway(self) -> None:
         for role in ("owner", "admin"):
             with self.subTest(role=role):
-                self.assertTrue(
-                    plugin._can_use_command(_event(sender_id="200", role=role))
-                )
+                plugin = _plugin(admins=())
+                event = _event(sender_id="200", role=role)
 
-    def test_plain_group_member_cannot_use_normal_commands(self) -> None:
+                results = _collect_async_generator(plugin.cf_status(event))
+
+                self.assertEqual(results, ["status response"])
+                self.assertTrue(event.stopped)
+                self.assertEqual(plugin.command_service.status_calls, 1)
+
+    def test_plain_group_member_cannot_use_normal_command_gateway(self) -> None:
         plugin = _plugin(admins=())
+        event = _event(sender_id="200", role="member")
 
-        self.assertFalse(
-            plugin._can_use_command(_event(sender_id="200", role="member"))
-        )
+        results = _collect_async_generator(plugin.cf_status(event))
 
-    def test_astrbot_admin_can_use_normal_commands(self) -> None:
+        self.assertEqual(results, [COMMAND_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(plugin.command_service.status_calls, 0)
+
+    def test_astrbot_admin_can_use_normal_command_gateway(self) -> None:
         plugin = _plugin(admins=("200",))
+        event = _event(sender_id="200", role="member")
 
-        self.assertTrue(
-            plugin._can_use_command(_event(sender_id="200", role="member"))
-        )
+        results = _collect_async_generator(plugin.cf_status(event))
+
+        self.assertEqual(results, ["status response"])
+        self.assertTrue(event.stopped)
+        self.assertEqual(plugin.command_service.status_calls, 1)
 
     def test_group_enable_denies_group_admin_when_managers_disallowed(
         self,
@@ -152,6 +163,19 @@ class MainCommandPermissionTests(unittest.TestCase):
         event = _event(sender_id="200", role="admin")
 
         results = _collect_async_generator(plugin.cf_group_enable(event))
+
+        self.assertEqual(results, [GROUP_ENABLE_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [])
+
+    def test_chatfilter_group_enable_denies_group_owner_when_managers_disallowed(
+        self,
+    ) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="owner")
+
+        results = _collect_async_generator(plugin.chatfilter_group_enable(event))
 
         self.assertEqual(results, [GROUP_ENABLE_PERMISSION_DENIED])
         self.assertTrue(event.stopped)
@@ -170,28 +194,75 @@ class MainCommandPermissionTests(unittest.TestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(command_service.group_enabled_calls, [("qq:100", True)])
 
-    def test_admin_exempt_command_text_toggles_service(self) -> None:
+    def test_admin_exempt_command_gateway_denies_plain_group_member(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="member")
+
+        results = _collect_async_generator(
+            plugin.cf_group_admin_exempt(event, "disable")
+        )
+
+        self.assertEqual(results, [COMMAND_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.admin_exempt_calls, [])
+
+    def test_admin_exempt_command_gateway_allows_group_manager(self) -> None:
         command_service = _CommandService()
         plugin = _plugin(command_service=command_service)
-        event = _event()
+        event = _event(sender_id="200", role="admin")
 
-        disabled = _await(
-            plugin._group_admin_exempt_command_text(event, "disable")
+        results = _collect_async_generator(
+            plugin.cf_group_admin_exempt(event, "disable")
         )
-        enabled = _await(plugin._group_admin_exempt_command_text(event, "enable"))
 
         self.assertEqual(
-            disabled,
-            "Chat Filter admin exemption disabled for this group.",
+            results,
+            ["Chat Filter admin exemption disabled for this group."],
         )
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.admin_exempt_calls, [("qq:100", False)])
+
+    def test_admin_exempt_alias_gateway_toggles_service(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(command_service=command_service)
+        event = _event(sender_id="200", role="owner")
+
+        results = _collect_async_generator(plugin.chatfilter_group_exempt(event, "on"))
+
         self.assertEqual(
-            enabled,
-            "Chat Filter admin exemption enabled for this group.",
+            results,
+            ["Chat Filter admin exemption enabled for this group."],
         )
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.admin_exempt_calls, [("qq:100", True)])
+
+    def test_admin_exempt_command_gateway_reports_status(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(command_service=command_service)
+        event = _event(sender_id="200", role="admin")
+
+        results = _collect_async_generator(plugin.cf_group_admin_exempt(event))
+
         self.assertEqual(
-            command_service.admin_exempt_calls,
-            [("qq:100", False), ("qq:100", True)],
+            results,
+            ["Chat Filter group admin exemption: enabled."],
         )
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.admin_exempt_status_calls, ["qq:100"])
+
+    def test_admin_exempt_command_gateway_rejects_unknown_action(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(command_service=command_service)
+        event = _event(sender_id="200", role="admin")
+
+        results = _collect_async_generator(
+            plugin.cf_group_admin_exempt(event, "maybe")
+        )
+
+        self.assertEqual(results, [GROUP_ADMIN_EXEMPT_USAGE])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.admin_exempt_calls, [])
 
 
 class _Config:
@@ -237,8 +308,14 @@ class _Event:
 
 class _CommandService:
     def __init__(self) -> None:
+        self.status_calls = 0
         self.group_enabled_calls: list[tuple[str | None, bool]] = []
         self.admin_exempt_calls: list[tuple[str | None, bool]] = []
+        self.admin_exempt_status_calls: list[str | None] = []
+
+    def format_status(self) -> str:
+        self.status_calls += 1
+        return "status response"
 
     async def set_group_enabled(self, group_key: str | None, enabled: bool) -> str:
         self.group_enabled_calls.append((group_key, enabled))
@@ -255,6 +332,10 @@ class _CommandService:
         if enabled:
             return "Chat Filter admin exemption enabled for this group."
         return "Chat Filter admin exemption disabled for this group."
+
+    def format_group_admin_exempt_status(self, group_key: str | None) -> str:
+        self.admin_exempt_status_calls.append(group_key)
+        return "Chat Filter group admin exemption: enabled."
 
 
 def _plugin(
