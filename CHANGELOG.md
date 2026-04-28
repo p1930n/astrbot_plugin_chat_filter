@@ -13,4 +13,5 @@
 
 ### 新增
 - **Overview 指令**：新增 `.cf overview` 摘要输出和 `.cf overview csv` 明细输出，用于查看当前平台已启用过滤的群、监听群以及对应推送群关系。
+- **Overview 回归覆盖**：补充 `.cf overview` 空参数命令入口和 `.cf overview csv` 跳过滤器的回归测试，确保指令继续由 AstrBot 命令路由处理。
 - **回归覆盖**：新增测试，确保旧持久化状态中的 `global_enabled=false` 不再阻断已启用群的过滤行为。

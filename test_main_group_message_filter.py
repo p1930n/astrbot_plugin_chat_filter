@@ -141,23 +141,25 @@ class MainGroupMessageFilterTests(unittest.TestCase):
         self.assertEqual(factory.calls, [("aiocqhttp", action_client)])
 
     def test_group_message_skips_own_command_before_service(self) -> None:
-        event = _Event(
-            text=" /cf status",
-            platform_name="aiocqhttp",
-            group_id="100",
-            sender_id="200",
-            action_client=object(),
-        )
-        service = _MessageFilterService(MessageFilterResult())
-        factory = _PlatformActionFactory()
-        plugin = _plugin(service=service, factory=factory)
+        for command_text in (" /cf status", ".cf overview csv"):
+            with self.subTest(command_text=command_text):
+                event = _Event(
+                    text=command_text,
+                    platform_name="aiocqhttp",
+                    group_id="100",
+                    sender_id="200",
+                    action_client=object(),
+                )
+                service = _MessageFilterService(MessageFilterResult())
+                factory = _PlatformActionFactory()
+                plugin = _plugin(service=service, factory=factory)
 
-        results = asyncio.run(_collect(plugin.on_group_message(event)))
+                results = asyncio.run(_collect(plugin.on_group_message(event)))
 
-        self.assertEqual(results, [])
-        self.assertFalse(event.stopped)
-        self.assertEqual(service.calls, [])
-        self.assertEqual(factory.calls, [])
+                self.assertEqual(results, [])
+                self.assertFalse(event.stopped)
+                self.assertEqual(service.calls, [])
+                self.assertEqual(factory.calls, [])
 
 
 class _MessageFilterService:
