@@ -10,15 +10,15 @@ PACKAGE_PARENT = PACKAGE_DIR.parent
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
-from astrbot_plugin_chat_filter.matcher import ChatFilterMatcher  # noqa: E402
-from astrbot_plugin_chat_filter.models import (  # noqa: E402
+from astrbot_plugin_chat_filter.domain.matcher import ChatFilterMatcher  # noqa: E402
+from astrbot_plugin_chat_filter.domain.models import (  # noqa: E402
     ChatMessage,
     GroupPolicy,
     RuntimeState,
 )
-from astrbot_plugin_chat_filter.rule_models import GlobalRule, RuleType  # noqa: E402
-from astrbot_plugin_chat_filter.rule_snapshot import RuleSnapshot  # noqa: E402
-from astrbot_plugin_chat_filter.settings import ChatFilterSettings  # noqa: E402
+from astrbot_plugin_chat_filter.domain.rule_models import GlobalRule, RuleType  # noqa: E402
+from astrbot_plugin_chat_filter.domain.rule_snapshot import RuleSnapshot  # noqa: E402
+from astrbot_plugin_chat_filter.domain.settings import ChatFilterSettings  # noqa: E402
 
 
 class MatcherRuleSnapshotTests(unittest.TestCase):
@@ -378,7 +378,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(bool_gap.regex_gap_max, 8)
 
     def test_status_uses_snapshot_summary_not_settings_global_words(self) -> None:
-        from astrbot_plugin_chat_filter.command_service import (  # noqa: E402
+        from astrbot_plugin_chat_filter.commands.command_service import (  # noqa: E402
             ChatFilterCommandService,
         )
 

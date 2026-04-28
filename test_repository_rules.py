@@ -15,14 +15,14 @@ PACKAGE_PARENT = PACKAGE_DIR.parent
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
-from astrbot_plugin_chat_filter.repository import (  # noqa: E402
+from astrbot_plugin_chat_filter.persistence.repository import (  # noqa: E402
     DATABASE_FILENAME,
     ChatFilterRepository,
 )
-from astrbot_plugin_chat_filter.repository_rules import (  # noqa: E402
+from astrbot_plugin_chat_filter.persistence.repository_rules import (  # noqa: E402
     LEGACY_IMPORT_META_VALUE,
 )
-from astrbot_plugin_chat_filter.repository_schema import (  # noqa: E402
+from astrbot_plugin_chat_filter.persistence.repository_schema import (  # noqa: E402
     CURRENT_SCHEMA_VERSION,
 )
 

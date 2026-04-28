@@ -10,12 +10,12 @@ PACKAGE_PARENT = PACKAGE_DIR.parent
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
-from astrbot_plugin_chat_filter.command_auth import (  # noqa: E402
+from astrbot_plugin_chat_filter.commands.command_auth import (  # noqa: E402
     COMMAND_PERMISSION_DENIED,
     GROUP_ENABLE_PERMISSION_DENIED,
     CommandAuthorizer,
 )
-from astrbot_plugin_chat_filter.models import PlatformEventSnapshot  # noqa: E402
+from astrbot_plugin_chat_filter.domain.models import PlatformEventSnapshot  # noqa: E402
 
 
 class CommandAuthorizerTests(unittest.TestCase):
