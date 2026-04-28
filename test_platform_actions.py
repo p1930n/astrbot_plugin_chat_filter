@@ -19,6 +19,7 @@ from astrbot_plugin_chat_filter.platform.platform_actions import (  # noqa: E402
     MuteUserRequest,
     OneBotV11PlatformActions,
     RecallMessageRequest,
+    SendTextLogRequest,
 )
 
 
@@ -80,6 +81,33 @@ class OneBotV11PlatformActionsTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_send_text_log_sends_plain_escaped_group_message(self) -> None:
+        action_client = _RecordingActionClient()
+        actions = OneBotV11PlatformActions(action_client)
+
+        result = await actions.send_text_log(
+            SendTextLogRequest(
+                platform="aiocqhttp",
+                target_group_id="100",
+                text="warn",
+            )
+        )
+
+        self.assertEqual(result.status, "success")
+        self.assertEqual(
+            action_client.calls,
+            [
+                (
+                    "send_group_msg",
+                    {
+                        "group_id": 100,
+                        "message": "warn",
+                        "auto_escape": True,
+                    },
+                )
+            ],
+        )
+
 
 class _HangingActionClient:
     async def call_action(self, action: str, **params: Any) -> Any:
@@ -94,6 +122,15 @@ class _FailingActionClient:
     async def call_action(self, action: str, **params: Any) -> Any:
         _ = action, params
         raise self._exc
+
+
+class _RecordingActionClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def call_action(self, action: str, **params: Any) -> Any:
+        self.calls.append((action, params))
+        return None
 
 
 class _Logger:

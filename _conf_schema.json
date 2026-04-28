@@ -1,14 +1,4 @@
 {
-  "enabled": {
-    "description": "默认全局启用聊天过滤",
-    "type": "bool",
-    "default": true
-  },
-  "default_group_enabled": {
-    "description": "未单独配置群的默认启用状态",
-    "type": "bool",
-    "default": false
-  },
   "case_sensitive": {
     "description": "区分大小写",
     "type": "bool",
@@ -35,12 +25,12 @@
     "default": true
   },
   "warn_user": {
-    "description": "命中后提示用户",
+    "description": "命中后发送纯文本提示；插件不会主动 @ 用户",
     "type": "bool",
     "default": true
   },
   "warning_message": {
-    "description": "命中后的安全提示文案，最多保留 200 个字符",
+    "description": "命中后的纯文本安全提示文案，最多保留 200 个字符",
     "type": "string",
     "default": "消息触发聊天过滤策略，请调整后重试。"
   },

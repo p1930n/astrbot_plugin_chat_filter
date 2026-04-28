@@ -49,7 +49,6 @@ class RuleSnapshotTests(unittest.TestCase):
     def test_snapshot_expands_configured_regex_gap_placeholder(self) -> None:
         settings = ChatFilterSettings.from_config(
             {
-                "default_group_enabled": True,
                 "regex_gap_max": 2,
             }
         )

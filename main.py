@@ -74,8 +74,6 @@ class ChatFilterPlugin(Star):
         )
         if result.stop_event:
             event.stop_event()
-        if result.warn_user:
-            yield event.plain_result(result.warning_message)
 
     @filter.command_group("chatfilter")
     def chatfilter():
@@ -159,13 +157,17 @@ class ChatFilterPlugin(Star):
     async def cf_status(self, event: AstrMessageEvent):
         yield await self._command_gateway.status(event)
 
+    @cf.command("overview")
+    async def cf_overview(self, event: AstrMessageEvent, output_format: str = ""):
+        yield await self._command_gateway.overview(event, output_format)
+
     @cf.command("enable")
-    async def cf_enable(self, event: AstrMessageEvent):
-        yield await self._command_gateway.enable(event)
+    async def cf_enable(self, event: AstrMessageEvent, group_id: str = ""):
+        yield await self._command_gateway.enable(event, group_id)
 
     @cf.command("disable")
-    async def cf_disable(self, event: AstrMessageEvent):
-        yield await self._command_gateway.disable(event)
+    async def cf_disable(self, event: AstrMessageEvent, group_id: str = ""):
+        yield await self._command_gateway.disable(event, group_id)
 
     @cf.group("group")
     def cf_group():
@@ -219,13 +221,21 @@ class ChatFilterPlugin(Star):
     async def chatfilter_status(self, event: AstrMessageEvent):
         yield await self._command_gateway.status(event)
 
+    @chatfilter.command("overview")
+    async def chatfilter_overview(
+        self,
+        event: AstrMessageEvent,
+        output_format: str = "",
+    ):
+        yield await self._command_gateway.overview(event, output_format)
+
     @chatfilter.command("enable")
-    async def chatfilter_enable(self, event: AstrMessageEvent):
-        yield await self._command_gateway.enable(event)
+    async def chatfilter_enable(self, event: AstrMessageEvent, group_id: str = ""):
+        yield await self._command_gateway.enable(event, group_id)
 
     @chatfilter.command("disable")
-    async def chatfilter_disable(self, event: AstrMessageEvent):
-        yield await self._command_gateway.disable(event)
+    async def chatfilter_disable(self, event: AstrMessageEvent, group_id: str = ""):
+        yield await self._command_gateway.disable(event, group_id)
 
     @chatfilter.group("group")
     def chatfilter_group():

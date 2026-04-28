@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from ..domain.models import ChatMessage, MatchResult, RuntimeState
-from ..platform.platform_actions import PlatformActions
+from ..platform.platform_actions import PlatformActions, SendTextLogRequest
 from ..domain.rule_snapshot import RuleSnapshot
 from ..domain.settings import ChatFilterSettings
 
@@ -112,13 +112,31 @@ class MessageFilterService:
                 platform_actions=platform_actions,
             )
 
+        if self._settings.warn_user:
+            await self._send_warning_message(message, platform_actions)
+
         return MessageFilterResult(
             stop_event=self._settings.stop_event,
-            warn_user=self._settings.warn_user,
-            warning_message=(
-                self._settings.warning_message if self._settings.warn_user else ""
-            ),
         )
+
+    async def _send_warning_message(
+        self,
+        message: ChatMessage,
+        platform_actions: PlatformActions,
+    ) -> None:
+        try:
+            await platform_actions.send_text_log(
+                SendTextLogRequest(
+                    platform=message.platform,
+                    target_group_id=message.group_id,
+                    text=self._settings.warning_message,
+                )
+            )
+        except Exception as exc:
+            self._logger.warning(
+                "Chat Filter warning message send failed: error_type=%s",
+                type(exc).__name__,
+            )
 
 
 def _has_required_message_scope(message: ChatMessage) -> bool:

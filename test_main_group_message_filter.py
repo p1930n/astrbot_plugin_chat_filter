@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import sys
 import types
 import unittest
@@ -128,7 +129,7 @@ class MainGroupMessageFilterTests(unittest.TestCase):
 
         results = asyncio.run(_collect(plugin.on_group_message(event)))
 
-        self.assertEqual(results, ["warn"])
+        self.assertEqual(results, [])
         self.assertTrue(event.stopped)
         self.assertEqual(len(service.calls), 1)
         message, platform_actions = service.calls[0]
@@ -200,7 +201,8 @@ class _Event:
         self.stopped = True
 
     def plain_result(self, text: str) -> str:
-        return text
+        _ = text
+        raise AssertionError("violation warning should not use plain_result")
 
 
 def _plugin(
@@ -215,6 +217,9 @@ def _plugin(
 
 
 async def _collect(async_generator) -> list[object]:
+    if inspect.isawaitable(async_generator):
+        result = await async_generator
+        return [] if result is None else [result]
     return [item async for item in async_generator]
 
 

@@ -21,14 +21,9 @@ class GroupPolicyCommandService:
             return "This command must be used in a group chat."
 
         policy = self._state.get_group_policy(group_key)
-        effective_enabled = (
-            self._settings.default_group_enabled
-            if policy.enabled is None
-            else policy.enabled
-        )
         return (
             "Chat Filter group status: "
-            f"group={'enabled' if effective_enabled else 'disabled'}, "
+            f"group={'enabled' if policy.enabled is True else 'disabled'}, "
             f"inherit_global={'enabled' if policy.inherit_global else 'disabled'}, "
             f"admin_exempt={'enabled' if policy.admin_exempt_enabled else 'disabled'}, "
             f"custom_words={len(policy.custom_words)}."

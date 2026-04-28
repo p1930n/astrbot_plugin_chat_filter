@@ -23,9 +23,7 @@ from astrbot_plugin_chat_filter.domain.settings import ChatFilterSettings  # noq
 
 class MatcherRuleSnapshotTests(unittest.TestCase):
     def test_matcher_uses_snapshot_and_respects_inherit_global_false(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [
                 _rule(1, "word", "blocked"),
@@ -63,9 +61,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(local_result.word_count, 1)
 
     def test_matcher_keeps_word_priority_and_regex_match_prefix(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [
                 _rule(1, "word", "blocked"),
@@ -73,7 +69,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
             ],
             settings=settings,
         )
-        state = RuntimeState()
+        state = _enabled_state()
         matcher = ChatFilterMatcher()
 
         word_result = matcher.detect(
@@ -96,10 +92,26 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(regex_result.matched_word, "regex:^root$")
         self.assertEqual(regex_result.word_count, 2)
 
-    def test_matcher_skips_group_manager_when_admin_exemption_enabled(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
+    def test_legacy_global_disabled_state_no_longer_blocks_enabled_group(self) -> None:
+        settings = ChatFilterSettings.from_config({})
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "blocked")],
+            settings=settings,
         )
+        state = _enabled_state(global_enabled=False)
+
+        result = ChatFilterMatcher().detect(
+            _message("blocked"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertTrue(result.matched)
+        self.assertEqual(result.matched_word, "blocked")
+
+    def test_matcher_skips_group_manager_when_admin_exemption_enabled(self) -> None:
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [_rule(1, "word", "blocked")],
             settings=settings,
@@ -109,13 +121,13 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         owner_result = matcher.detect(
             _message("blocked", sender_role="owner"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
         admin_result = matcher.detect(
             _message("blocked", sender_role="admin"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
 
@@ -123,9 +135,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertFalse(admin_result.matched)
 
     def test_matcher_checks_group_manager_when_admin_exemption_disabled(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [_rule(1, "word", "blocked")],
             settings=settings,
@@ -150,9 +160,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(result.matched_word, "blocked")
 
     def test_matcher_applies_admin_exemption_per_group(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [_rule(1, "word", "blocked")],
             settings=settings,
@@ -188,9 +196,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertFalse(enabled_group_result.matched)
 
     def test_matcher_detects_obfuscated_words_with_short_gaps(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [
                 _rule(1, "word", "脑残"),
@@ -198,7 +204,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
             ],
             settings=settings,
         )
-        state = RuntimeState()
+        state = _enabled_state()
         matcher = ChatFilterMatcher()
 
         insult_result = matcher.detect(
@@ -222,8 +228,6 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
     def test_obfuscated_word_matching_can_be_disabled(self) -> None:
         settings = ChatFilterSettings.from_config(
             {
-                "enabled": True,
-                "default_group_enabled": True,
                 "obfuscated_word_matching_enabled": False,
             }
         )
@@ -234,7 +238,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         result = ChatFilterMatcher().detect(
             _message("脑u残"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
 
@@ -243,8 +247,6 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
     def test_obfuscated_word_matching_respects_gap_limit(self) -> None:
         settings = ChatFilterSettings.from_config(
             {
-                "enabled": True,
-                "default_group_enabled": True,
                 "obfuscated_word_max_gap": 1,
             }
         )
@@ -257,13 +259,13 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         short_gap = matcher.detect(
             _message("脑u残"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
         long_gap = matcher.detect(
             _message("脑uv残"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
 
@@ -273,8 +275,6 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
     def test_obfuscated_word_matching_respects_case_sensitive_mode(self) -> None:
         settings = ChatFilterSettings.from_config(
             {
-                "enabled": True,
-                "default_group_enabled": True,
                 "case_sensitive": True,
             }
         )
@@ -287,13 +287,13 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         exact_case = matcher.detect(
             _message("Axb"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
         wrong_case = matcher.detect(
             _message("axb"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
 
@@ -301,9 +301,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertFalse(wrong_case.matched)
 
     def test_single_character_words_do_not_use_obfuscated_matching(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [_rule(1, "word", "坏")],
             settings=settings,
@@ -312,13 +310,13 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         direct_result = ChatFilterMatcher().detect(
             _message("坏"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
         unrelated_result = ChatFilterMatcher().detect(
             _message("不"),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
 
@@ -326,9 +324,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertFalse(unrelated_result.matched)
 
     def test_obfuscated_word_matching_uses_2000_character_scan_limit(self) -> None:
-        settings = ChatFilterSettings.from_config(
-            {"enabled": True, "default_group_enabled": True}
-        )
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(
             [_rule(1, "word", "脑残")],
             settings=settings,
@@ -338,7 +334,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         result = ChatFilterMatcher().detect(
             _message(text),
             settings,
-            RuntimeState(),
+            _enabled_state(),
             snapshot,
         )
 
@@ -382,7 +378,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
             ChatFilterCommandService,
         )
 
-        settings = ChatFilterSettings.from_config({"default_group_enabled": True})
+        settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot(
             global_words=("alpha", "beta"),
             global_regex_rules=(),
@@ -398,6 +394,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
 
         self.assertFalse(hasattr(settings, "global_words"))
         self.assertIn("global_words=2", service.format_status())
+        self.assertNotIn("global=", service.format_status())
 
 
 class FakeLogger:
@@ -420,6 +417,13 @@ def _message(
         user_id="u1",
         text=text,
         sender_role=sender_role,
+    )
+
+
+def _enabled_state(*, global_enabled: bool | None = None) -> RuntimeState:
+    return RuntimeState(
+        global_enabled=global_enabled,
+        groups={"qq:200": GroupPolicy(enabled=True)},
     )
 
 

@@ -21,16 +21,9 @@ class ChatFilterMatcher:
     ) -> MatchResult:
         if not message.text:
             return MatchResult(matched=False)
-        if not state.effective_global_enabled(settings.enabled):
-            return MatchResult(matched=False)
 
         policy = state.get_group_policy(message.group_key)
-        group_enabled = (
-            settings.default_group_enabled
-            if policy.enabled is None
-            else policy.enabled
-        )
-        if not group_enabled:
+        if policy.enabled is not True:
             return MatchResult(matched=False)
         if policy.admin_exempt_enabled and message.sender_is_group_manager:
             return MatchResult(matched=False)

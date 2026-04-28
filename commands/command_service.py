@@ -19,6 +19,7 @@ from ..services.forward_probe_service import (
 )
 from .global_command_service import GlobalCommandService
 from .group_policy_command_service import GroupPolicyCommandService
+from .overview_command_service import OverviewCommandService
 from ..domain.models import GroupPolicy, PlatformEventSnapshot, PushBinding, RuntimeState
 from .mute_policy_command_service import MutePolicyCommandService
 from ..platform.platform_actions import PlatformActions
@@ -54,9 +55,7 @@ class ChatFilterCommandService:
         self._runtime = CommandRuntimeService(repository, state, logger)
         self._global_commands = GlobalCommandService(
             state,
-            settings,
             rule_snapshot,
-            self._runtime,
         )
         self._group_policy_commands = GroupPolicyCommandService(
             state,
@@ -64,6 +63,7 @@ class ChatFilterCommandService:
             self._runtime,
         )
         self._push_binding_commands = PushBindingCommandService(repository, logger)
+        self._overview_commands = OverviewCommandService(repository, state, logger)
         self._mute_policy_commands = MutePolicyCommandService(
             repository,
             settings,
@@ -76,9 +76,6 @@ class ChatFilterCommandService:
 
     def format_help(self) -> str:
         return self._global_commands.format_help()
-
-    async def set_global_enabled(self, enabled: bool) -> str:
-        return await self._global_commands.set_global_enabled(enabled)
 
     def format_group_status(self, group_key: str | None) -> str:
         return self._group_policy_commands.format_group_status(group_key)
@@ -126,6 +123,9 @@ class ChatFilterCommandService:
 
     async def format_push_bindings(self, platform: str) -> str:
         return await self._push_binding_commands.format_push_bindings(platform)
+
+    async def format_overview(self, platform: str, output_format: str = "") -> str:
+        return await self._overview_commands.format_overview(platform, output_format)
 
     async def set_group_mute_duration(
         self,
