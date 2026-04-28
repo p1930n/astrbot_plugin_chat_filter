@@ -8,6 +8,7 @@
 - **群级关闭**：`.cf disable` 和 `/chatfilter disable` 改为关闭当前群的聊天过滤；追加群号关闭指定群时仅允许 AstrBot 管理员操作。
 - **WebUI 配置边界**：从 `_conf_schema.json` 移除插件内部的全局聊天过滤 `enabled` 配置；插件级启停只交给 AstrBot WebUI，过滤生效范围由群策略控制。
 - **默认群策略**：移除 WebUI 中的 `default_group_enabled` 配置；未单独配置的群固定为默认关闭，只能通过 `.cf enable` 或 `.cf enable [群号]` 显式启用。
+- **命中提示装配**：违规命中提示改为插件侧纯文本群消息发送，不再通过 AstrBot `plain_result` 回装，避免触发平台自动 @ 用户；命令响应仍交给 AstrBot 平台设置处理。
 - **状态输出**：`.cf status` 移除冗余的 `global=enabled|disabled` 和默认群策略字段，仅保留全局规则数量和已配置群数量。
 
 ### 新增

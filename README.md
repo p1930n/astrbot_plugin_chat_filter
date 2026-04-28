@@ -67,8 +67,8 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `obfuscated_word_max_gap` | `4` | 普通词相邻字符最大间隔。 |
 | `regex_gap_max` | `8` | 正则规则 `{{GAP}}` 占位符展开后的最大间隔。 |
 | `stop_event` | `true` | 命中后是否阻断后续事件处理。 |
-| `warn_user` | `true` | 命中后是否提示用户。 |
-| `warning_message` | `消息触发聊天过滤策略，请调整后重试。` | 命中后的用户提示文案。 |
+| `warn_user` | `true` | 命中后是否发送纯文本提示；插件不会主动 @ 用户。 |
+| `warning_message` | `消息触发聊天过滤策略，请调整后重试。` | 命中后的纯文本提示文案。 |
 | `max_word_count` | `500` | 每个词库最多词条数。 |
 | `max_word_length` | `64` | 单个词条最大长度。 |
 | `violation_records_enabled` | `true` | 是否写入 SQLite 命中审计记录。 |

@@ -50,13 +50,12 @@ class MessageFilterServiceTests(unittest.TestCase):
             result,
             MessageFilterResult(
                 stop_event=True,
-                warn_user=True,
-                warning_message="warn",
             ),
         )
         self.assertEqual(len(matcher.calls), 1)
         self.assertEqual(recorder.calls, [(message, "blocked", platform_actions)])
         self.assertEqual(executor.calls, [(42, message, platform_actions)])
+        self.assertEqual(platform_actions.text_logs, [("qq", "100", "warn")])
 
     def test_no_match_skips_recording_and_actions(self) -> None:
         matcher = _Matcher(MatchResult(matched=False))
@@ -101,12 +100,30 @@ class MessageFilterServiceTests(unittest.TestCase):
             result,
             MessageFilterResult(
                 stop_event=True,
-                warn_user=True,
-                warning_message="warn",
             ),
         )
         self.assertEqual(recorder.calls, [])
         self.assertEqual(executor.calls, [])
+
+    def test_warning_message_send_failure_is_logged_without_user_error(self) -> None:
+        matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
+        logger = _Logger()
+        platform_actions = _PlatformActions(send_error=RuntimeError("boom"))
+        service = _service(
+            matcher=matcher,
+            settings=ChatFilterSettings.from_config({"warning_message": "warn"}),
+            logger=logger,
+        )
+
+        result = asyncio.run(
+            service.handle_group_message(_message("blocked"), platform_actions)
+        )
+
+        self.assertEqual(result, MessageFilterResult(stop_event=True))
+        self.assertEqual(
+            logger.warning_calls,
+            [("RuntimeError",)],
+        )
 
     def test_incomplete_scope_logs_and_skips_matcher(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
@@ -188,7 +205,17 @@ class _Logger:
 
 
 class _PlatformActions:
-    pass
+    def __init__(self, send_error: Exception | None = None) -> None:
+        self._send_error = send_error
+        self.text_logs: list[tuple[str, str, str]] = []
+
+    async def send_text_log(self, request) -> object:
+        if self._send_error is not None:
+            raise self._send_error
+        self.text_logs.append(
+            (request.platform, request.target_group_id, request.text)
+        )
+        return object()
 
 
 def _service(

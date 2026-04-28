@@ -25,12 +25,12 @@
     "default": true
   },
   "warn_user": {
-    "description": "命中后提示用户",
+    "description": "命中后发送纯文本提示；插件不会主动 @ 用户",
     "type": "bool",
     "default": true
   },
   "warning_message": {
-    "description": "命中后的安全提示文案，最多保留 200 个字符",
+    "description": "命中后的纯文本安全提示文案，最多保留 200 个字符",
     "type": "string",
     "default": "消息触发聊天过滤策略，请调整后重试。"
   },

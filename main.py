@@ -74,8 +74,6 @@ class ChatFilterPlugin(Star):
         )
         if result.stop_event:
             event.stop_event()
-        if result.warn_user:
-            yield event.plain_result(result.warning_message)
 
     @filter.command_group("chatfilter")
     def chatfilter():
