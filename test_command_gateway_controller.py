@@ -148,7 +148,6 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
             service.group_enabled_calls,
             [("qq:100", True), ("qq:300", True)],
         )
-        self.assertEqual(service.global_enabled_calls, [])
 
     def test_top_level_enable_rejects_invalid_target_group_without_saving(self) -> None:
         service = _CommandService()
@@ -158,7 +157,6 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
 
         self.assertEqual(result, GROUP_ENABLE_USAGE)
         self.assertEqual(service.group_enabled_calls, [])
-        self.assertEqual(service.global_enabled_calls, [])
 
     def test_top_level_disable_target_group_requires_global_admin(self) -> None:
         manager_service = _CommandService()
@@ -248,7 +246,6 @@ class _CommandService:
         self.admin_exempt_calls: list[tuple[str | None, bool]] = []
         self.admin_exempt_status_calls: list[str | None] = []
         self.group_enabled_calls: list[tuple[str | None, bool]] = []
-        self.global_enabled_calls: list[bool] = []
 
     def format_group_admin_exempt_status(self, group_key: str | None) -> str:
         self.admin_exempt_status_calls.append(group_key)
@@ -269,12 +266,6 @@ class _CommandService:
         if enabled:
             return "Chat Filter enabled for this group."
         return "Chat Filter disabled for this group."
-
-    async def set_global_enabled(self, enabled: bool) -> str:
-        self.global_enabled_calls.append(enabled)
-        if enabled:
-            return "Chat Filter enabled globally."
-        return "Chat Filter disabled globally."
 
 
 class _GatewayController:

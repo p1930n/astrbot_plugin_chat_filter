@@ -1,9 +1,4 @@
 {
-  "enabled": {
-    "description": "默认全局启用聊天过滤",
-    "type": "bool",
-    "default": true
-  },
   "default_group_enabled": {
     "description": "未单独配置群的默认启用状态",
     "type": "bool",

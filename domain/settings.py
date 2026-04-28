@@ -36,7 +36,6 @@ class RegexRule:
 
 @dataclass(frozen=True, slots=True)
 class ChatFilterSettings:
-    enabled: bool = True
     default_group_enabled: bool = False
     case_sensitive: bool = False
     stop_event: bool = True
@@ -78,7 +77,6 @@ class ChatFilterSettings:
         )
         case_sensitive = _as_bool(data.get("case_sensitive"), False)
         return cls(
-            enabled=_as_bool(data.get("enabled"), True),
             default_group_enabled=_as_bool(data.get("default_group_enabled"), False),
             case_sensitive=case_sensitive,
             stop_event=_as_bool(data.get("stop_event"), True),

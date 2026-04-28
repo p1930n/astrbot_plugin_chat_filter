@@ -36,11 +36,6 @@ class RuntimeState:
     global_enabled: bool | None = None
     groups: dict[str, GroupPolicy] = field(default_factory=dict)
 
-    def effective_global_enabled(self, configured_enabled: bool) -> bool:
-        if self.global_enabled is None:
-            return configured_enabled
-        return self.global_enabled
-
     def get_group_policy(self, group_key: str) -> GroupPolicy:
         return self.groups.get(group_key, GroupPolicy())
 

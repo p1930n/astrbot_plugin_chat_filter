@@ -56,7 +56,6 @@ class ChatFilterCommandService:
             state,
             settings,
             rule_snapshot,
-            self._runtime,
         )
         self._group_policy_commands = GroupPolicyCommandService(
             state,
@@ -76,9 +75,6 @@ class ChatFilterCommandService:
 
     def format_help(self) -> str:
         return self._global_commands.format_help()
-
-    async def set_global_enabled(self, enabled: bool) -> str:
-        return await self._global_commands.set_global_enabled(enabled)
 
     def format_group_status(self, group_key: str | None) -> str:
         return self._group_policy_commands.format_group_status(group_key)

@@ -21,8 +21,6 @@ class ChatFilterMatcher:
     ) -> MatchResult:
         if not message.text:
             return MatchResult(matched=False)
-        if not state.effective_global_enabled(settings.enabled):
-            return MatchResult(matched=False)
 
         policy = state.get_group_policy(message.group_key)
         group_enabled = (

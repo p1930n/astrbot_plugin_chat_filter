@@ -96,6 +96,24 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(regex_result.matched_word, "regex:^root$")
         self.assertEqual(regex_result.word_count, 2)
 
+    def test_legacy_global_disabled_state_no_longer_blocks_enabled_group(self) -> None:
+        settings = ChatFilterSettings.from_config({"default_group_enabled": True})
+        snapshot = RuleSnapshot.from_rules(
+            [_rule(1, "word", "blocked")],
+            settings=settings,
+        )
+        state = RuntimeState(global_enabled=False)
+
+        result = ChatFilterMatcher().detect(
+            _message("blocked"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertTrue(result.matched)
+        self.assertEqual(result.matched_word, "blocked")
+
     def test_matcher_skips_group_manager_when_admin_exemption_enabled(self) -> None:
         settings = ChatFilterSettings.from_config(
             {"enabled": True, "default_group_enabled": True}
@@ -398,6 +416,7 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
 
         self.assertFalse(hasattr(settings, "global_words"))
         self.assertIn("global_words=2", service.format_status())
+        self.assertNotIn("global=", service.format_status())
 
 
 class FakeLogger:

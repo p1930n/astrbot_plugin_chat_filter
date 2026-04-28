@@ -51,11 +51,6 @@ class CommandRuntimeService:
         async with self._state_lock:
             return await self._try_save_state_unlocked()
 
-    async def set_global_enabled(self, enabled: bool) -> bool:
-        async with self._state_lock:
-            self._state.global_enabled = enabled
-            return await self._try_save_state_unlocked()
-
     async def set_group_enabled(self, group_key: str, enabled: bool) -> bool:
         async with self._state_lock:
             policy = self._copy_group_policy_unlocked(group_key)
