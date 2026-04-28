@@ -33,7 +33,7 @@ class GlobalCommandService:
     def format_help(self) -> str:
         return (
             "Chat Filter commands: "
-            ".cf status; .cf enable; .cf disable; "
+            ".cf status; .cf enable [group id]; .cf disable [group id]; "
             ".cf group status|enable|disable|add|remove|list; "
             ".cf group admin-exempt status|enable|disable (alias: exempt); "
             "/chatfilter group admin-exempt status|enable|disable; "

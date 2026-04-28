@@ -24,8 +24,8 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | --- | --- |
 | `.cf help` | 查看插件命令摘要。 |
 | `.cf status` | 查看全局启用状态、默认群状态、全局词数量和已记录群数量。 |
-| `.cf enable` | 全局启用过滤。 |
-| `.cf disable` | 全局关闭过滤。 |
+| `.cf enable [群号]` | 启用当前群或指定群过滤；不再作为全局开关。此命令只允许 AstrBot 管理员使用。 |
+| `.cf disable [群号]` | 关闭当前群或指定群过滤；不再作为全局开关。传入群号时只允许 AstrBot 管理员使用。 |
 | `.cf group status` | 查看当前群过滤状态、继承状态、管理员豁免状态和群自定义词数量。 |
 | `.cf group enable` | 启用当前群过滤。此命令只允许 AstrBot 管理员使用。 |
 | `.cf group disable` | 关闭当前群过滤。 |
@@ -52,7 +52,8 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 ## 权限
 
 - 默认情况下，命令允许 AstrBot 管理员、QQ群主或 QQ 群管理员使用。
-- `.cf group enable` 和 `/chatfilter group enable` 更严格，只允许 AstrBot 管理员使用。
+- `.cf enable`、`.cf group enable`、`/chatfilter enable` 和 `/chatfilter group enable` 更严格，只允许 AstrBot 管理员使用。
+- `.cf disable [群号]` 和 `/chatfilter disable [群号]` 指定群号时只允许 AstrBot 管理员使用；不指定群号时仍允许当前群的群主或管理员使用。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。
 
 ## 配置

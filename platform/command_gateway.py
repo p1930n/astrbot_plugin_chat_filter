@@ -190,16 +190,16 @@ class CommandGateway:
             await self._controller.status(dehydrate_event_snapshot(event)),
         )
 
-    async def enable(self, event: AstrMessageEvent):
+    async def enable(self, event: AstrMessageEvent, group_id: str = ""):
         return self.command_result(
             event,
-            await self._controller.enable(dehydrate_event_snapshot(event)),
+            await self._controller.enable(dehydrate_event_snapshot(event), group_id),
         )
 
-    async def disable(self, event: AstrMessageEvent):
+    async def disable(self, event: AstrMessageEvent, group_id: str = ""):
         return self.command_result(
             event,
-            await self._controller.disable(dehydrate_event_snapshot(event)),
+            await self._controller.disable(dehydrate_event_snapshot(event), group_id),
         )
 
     async def group_status(self, event: AstrMessageEvent):
