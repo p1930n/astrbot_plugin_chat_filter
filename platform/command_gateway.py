@@ -190,6 +190,15 @@ class CommandGateway:
             await self._controller.status(dehydrate_event_snapshot(event)),
         )
 
+    async def overview(self, event: AstrMessageEvent, output_format: str = ""):
+        return self.command_result(
+            event,
+            await self._controller.overview(
+                dehydrate_event_snapshot(event),
+                output_format,
+            ),
+        )
+
     async def enable(self, event: AstrMessageEvent, group_id: str = ""):
         return self.command_result(
             event,

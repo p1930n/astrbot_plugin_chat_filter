@@ -199,6 +199,20 @@ class CommandController:
 
         return self._command_service.format_status()
 
+    async def overview(
+        self,
+        snapshot: PlatformEventSnapshot,
+        output_format: str = "",
+    ) -> str:
+        denial = self.command_denial(snapshot)
+        if denial:
+            return denial
+
+        return await self._command_service.format_overview(
+            snapshot.platform,
+            output_format,
+        )
+
     async def enable(
         self,
         snapshot: PlatformEventSnapshot,

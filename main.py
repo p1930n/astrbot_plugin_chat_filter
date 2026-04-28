@@ -157,6 +157,10 @@ class ChatFilterPlugin(Star):
     async def cf_status(self, event: AstrMessageEvent):
         yield await self._command_gateway.status(event)
 
+    @cf.command("overview")
+    async def cf_overview(self, event: AstrMessageEvent, output_format: str = ""):
+        yield await self._command_gateway.overview(event, output_format)
+
     @cf.command("enable")
     async def cf_enable(self, event: AstrMessageEvent, group_id: str = ""):
         yield await self._command_gateway.enable(event, group_id)
@@ -216,6 +220,14 @@ class ChatFilterPlugin(Star):
     @chatfilter.command("status")
     async def chatfilter_status(self, event: AstrMessageEvent):
         yield await self._command_gateway.status(event)
+
+    @chatfilter.command("overview")
+    async def chatfilter_overview(
+        self,
+        event: AstrMessageEvent,
+        output_format: str = "",
+    ):
+        yield await self._command_gateway.overview(event, output_format)
 
     @chatfilter.command("enable")
     async def chatfilter_enable(self, event: AstrMessageEvent, group_id: str = ""):

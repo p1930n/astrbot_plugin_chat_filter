@@ -19,6 +19,7 @@ from ..services.forward_probe_service import (
 )
 from .global_command_service import GlobalCommandService
 from .group_policy_command_service import GroupPolicyCommandService
+from .overview_command_service import OverviewCommandService
 from ..domain.models import GroupPolicy, PlatformEventSnapshot, PushBinding, RuntimeState
 from .mute_policy_command_service import MutePolicyCommandService
 from ..platform.platform_actions import PlatformActions
@@ -62,6 +63,7 @@ class ChatFilterCommandService:
             self._runtime,
         )
         self._push_binding_commands = PushBindingCommandService(repository, logger)
+        self._overview_commands = OverviewCommandService(repository, state, logger)
         self._mute_policy_commands = MutePolicyCommandService(
             repository,
             settings,
@@ -121,6 +123,9 @@ class ChatFilterCommandService:
 
     async def format_push_bindings(self, platform: str) -> str:
         return await self._push_binding_commands.format_push_bindings(platform)
+
+    async def format_overview(self, platform: str, output_format: str = "") -> str:
+        return await self._overview_commands.format_overview(platform, output_format)
 
     async def set_group_mute_duration(
         self,

@@ -12,4 +12,5 @@
 - **状态输出**：`.cf status` 移除冗余的 `global=enabled|disabled` 和默认群策略字段，仅保留全局规则数量和已配置群数量。
 
 ### 新增
+- **Overview 指令**：新增 `.cf overview` 摘要输出和 `.cf overview csv` 明细输出，用于查看当前平台已启用过滤的群、监听群以及对应推送群关系。
 - **回归覆盖**：新增测试，确保旧持久化状态中的 `global_enabled=false` 不再阻断已启用群的过滤行为。

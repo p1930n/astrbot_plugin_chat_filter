@@ -186,6 +186,24 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
         self.assertEqual(result, GROUP_DISABLE_USAGE)
         self.assertEqual(service.group_enabled_calls, [])
 
+    def test_overview_uses_platform_scope_and_optional_format(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        result = _run(controller.overview(_snapshot(sender_role="member"), "csv"))
+
+        self.assertEqual(result, "overview:qq:csv")
+        self.assertEqual(service.overview_calls, [("qq", "csv")])
+
+    def test_overview_denies_plain_member_without_touching_service(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service)
+
+        result = _run(controller.overview(_snapshot(sender_role="member"), "csv"))
+
+        self.assertEqual(result, COMMAND_PERMISSION_DENIED)
+        self.assertEqual(service.overview_calls, [])
+
 
 class CommandGatewayAdminExemptTests(unittest.TestCase):
     def test_gateway_stops_event_and_dehydrates_snapshot_for_admin_exempt(self) -> None:
@@ -211,6 +229,17 @@ class CommandGatewayAdminExemptTests(unittest.TestCase):
         result = _run(gateway.enable(event, "300"))
 
         self.assertEqual(result, "enable:300:200:admin")
+        self.assertTrue(event.stopped)
+        self.assertEqual(len(controller.snapshots), 1)
+
+    def test_gateway_passes_optional_format_to_overview(self) -> None:
+        controller = _GatewayController()
+        gateway = CommandGateway(controller, _PlatformActionFactory())
+        event = _Event(sender_id="200", sender_role="admin")
+
+        result = _run(gateway.overview(event, "csv"))
+
+        self.assertEqual(result, "overview:csv:200:admin")
         self.assertTrue(event.stopped)
         self.assertEqual(len(controller.snapshots), 1)
 
@@ -246,6 +275,7 @@ class _CommandService:
         self.admin_exempt_calls: list[tuple[str | None, bool]] = []
         self.admin_exempt_status_calls: list[str | None] = []
         self.group_enabled_calls: list[tuple[str | None, bool]] = []
+        self.overview_calls: list[tuple[str, str]] = []
 
     def format_group_admin_exempt_status(self, group_key: str | None) -> str:
         self.admin_exempt_status_calls.append(group_key)
@@ -267,6 +297,10 @@ class _CommandService:
             return "Chat Filter enabled for this group."
         return "Chat Filter disabled for this group."
 
+    async def format_overview(self, platform: str, output_format: str = "") -> str:
+        self.overview_calls.append((platform, output_format))
+        return f"overview:{platform}:{output_format}"
+
 
 class _GatewayController:
     def __init__(self) -> None:
@@ -287,6 +321,14 @@ class _GatewayController:
     ) -> str:
         self.snapshots.append(snapshot)
         return f"enable:{group_id}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def overview(
+        self,
+        snapshot: PlatformEventSnapshot,
+        output_format: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return f"overview:{output_format}:{snapshot.sender_id}:{snapshot.sender_role}"
 
 
 class _PlatformActionFactory:
