@@ -125,17 +125,13 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
         self.assertEqual(state.groups, {})
         self.assertEqual(repository.saved_states, [])
 
-    def test_format_group_status_uses_default_policy_for_new_group(self) -> None:
-        service = _service(
-            settings=ChatFilterSettings.from_config(
-                {"default_group_enabled": True}
-            )
-        )
+    def test_format_group_status_uses_closed_default_policy_for_new_group(self) -> None:
+        service = _service()
 
         self.assertEqual(
             service.format_group_status("qq:100"),
             "Chat Filter group status: "
-            "group=enabled, "
+            "group=disabled, "
             "inherit_global=enabled, "
             "admin_exempt=enabled, "
             "custom_words=0.",
@@ -152,9 +148,6 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
                         custom_words=("alpha", "beta"),
                     )
                 }
-            ),
-            settings=ChatFilterSettings.from_config(
-                {"default_group_enabled": True}
             ),
         )
 

@@ -54,7 +54,6 @@ class ChatFilterCommandService:
         self._runtime = CommandRuntimeService(repository, state, logger)
         self._global_commands = GlobalCommandService(
             state,
-            settings,
             rule_snapshot,
         )
         self._group_policy_commands = GroupPolicyCommandService(

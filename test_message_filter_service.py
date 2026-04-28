@@ -35,7 +35,6 @@ class MessageFilterServiceTests(unittest.TestCase):
             executor=executor,
             settings=ChatFilterSettings.from_config(
                 {
-                    "default_group_enabled": True,
                     "warning_message": "warn",
                 }
             ),
@@ -88,7 +87,6 @@ class MessageFilterServiceTests(unittest.TestCase):
             executor=executor,
             settings=ChatFilterSettings.from_config(
                 {
-                    "default_group_enabled": True,
                     "violation_records_enabled": False,
                     "warning_message": "warn",
                 }
@@ -204,7 +202,7 @@ def _service(
     return MessageFilterService(
         matcher=matcher,
         settings=settings
-        or ChatFilterSettings.from_config({"default_group_enabled": True}),
+        or ChatFilterSettings.from_config({}),
         state=RuntimeState(),
         rule_snapshot=RuleSnapshot(
             global_words=(),

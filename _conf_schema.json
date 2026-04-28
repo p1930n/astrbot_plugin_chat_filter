@@ -1,9 +1,4 @@
 {
-  "default_group_enabled": {
-    "description": "未单独配置群的默认启用状态",
-    "type": "bool",
-    "default": false
-  },
   "case_sensitive": {
     "description": "区分大小写",
     "type": "bool",
