@@ -181,6 +181,23 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
                 self.assertEqual(results, [f"gateway:{gateway_method}"])
                 self.assertEqual(gateway.calls, [(gateway_method, (event, *args))])
 
+    def test_overview_entries_allow_empty_output_format(self) -> None:
+        cases = (
+            ("cf_overview", "overview"),
+            ("chatfilter_overview", "overview"),
+        )
+
+        for handler_name, gateway_method in cases:
+            with self.subTest(handler=handler_name):
+                gateway = _CommandGatewayProbe()
+                plugin = _plugin(gateway)
+                event = _Event()
+
+                results = _collect_async_generator(getattr(plugin, handler_name)(event))
+
+                self.assertEqual(results, [f"gateway:{gateway_method}"])
+                self.assertEqual(gateway.calls, [(gateway_method, (event, ""))])
+
 
 class _LegacyBridgeFailingPlugin(ChatFilterPlugin):
     def _command_result(self, *_args: Any, **_kwargs: Any) -> Any:
