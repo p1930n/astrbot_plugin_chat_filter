@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .command_auth import CommandAuthorizer
 from .command_service import ChatFilterCommandService
+from .command_validation import is_valid_qq_group_id
 from ..services.file_probe_service import FileProbeService
 from ..domain.models import PlatformEventSnapshot
 from ..platform.platform_actions import PlatformActions, format_platform_probe
@@ -12,6 +13,14 @@ GROUP_ADMIN_EXEMPT_USAGE = (
     "Usage: .cf group admin-exempt status|enable|disable "
     "or /chatfilter group admin-exempt status|enable|disable "
     "(alias: exempt)"
+)
+GROUP_ENABLE_USAGE = "Usage: .cf enable [group id] or /chatfilter enable [group id]"
+GROUP_DISABLE_USAGE = (
+    "Usage: .cf disable [group id] or /chatfilter disable [group id]"
+)
+TARGET_GROUP_PERMISSION_DENIED = (
+    "Chat Filter target group permission denied: "
+    "requires AstrBot admin permission."
 )
 
 
@@ -190,19 +199,38 @@ class CommandController:
 
         return self._command_service.format_status()
 
-    async def enable(self, snapshot: PlatformEventSnapshot) -> str:
-        denial = self.command_denial(snapshot)
+    async def enable(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+    ) -> str:
+        denial = self.command_denial(snapshot, allow_group_manager=False)
         if denial:
             return denial
 
-        return await self._command_service.set_global_enabled(True)
+        group_key = _target_group_key(snapshot, group_id)
+        if group_key is None:
+            return GROUP_ENABLE_USAGE
+        return await self._command_service.set_group_enabled(group_key, True)
 
-    async def disable(self, snapshot: PlatformEventSnapshot) -> str:
-        denial = self.command_denial(snapshot)
-        if denial:
-            return denial
+    async def disable(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+    ) -> str:
+        target_group_id = group_id.strip()
+        if target_group_id:
+            if not self.check_global_permission(snapshot):
+                return TARGET_GROUP_PERMISSION_DENIED
+        else:
+            denial = self.command_denial(snapshot)
+            if denial:
+                return denial
 
-        return await self._command_service.set_global_enabled(False)
+        group_key = _target_group_key(snapshot, target_group_id)
+        if group_key is None:
+            return GROUP_DISABLE_USAGE
+        return await self._command_service.set_group_enabled(group_key, False)
 
     async def group_status(self, snapshot: PlatformEventSnapshot) -> str:
         denial = self.command_denial(snapshot)
@@ -299,3 +327,15 @@ def _group_key(snapshot: PlatformEventSnapshot) -> str | None:
     if not snapshot.platform or not snapshot.group_id:
         return None
     return f"{snapshot.platform}:{snapshot.group_id}"
+
+
+def _target_group_key(
+    snapshot: PlatformEventSnapshot,
+    group_id: str = "",
+) -> str | None:
+    target_group_id = group_id.strip()
+    if not target_group_id:
+        return _group_key(snapshot)
+    if not snapshot.platform or not is_valid_qq_group_id(target_group_id):
+        return None
+    return f"{snapshot.platform}:{target_group_id}"
