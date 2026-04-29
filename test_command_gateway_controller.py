@@ -56,14 +56,17 @@ from astrbot_plugin_chat_filter.commands.command_auth import (  # noqa: E402
     CommandAuthorizer,
 )
 from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E402
+    GLOBAL_DIAGNOSTICS_PERMISSION_DENIED,
     GROUP_ADMIN_EXEMPT_USAGE,
     GROUP_DISABLE_USAGE,
     GROUP_ENABLE_USAGE,
     TARGET_GROUP_PERMISSION_DENIED,
     CommandController,
 )
-from astrbot_plugin_chat_filter.platform.command_gateway import CommandGateway  # noqa: E402
 from astrbot_plugin_chat_filter.domain.models import PlatformEventSnapshot  # noqa: E402
+from astrbot_plugin_chat_filter.platform.command_gateway import (  # noqa: E402
+    CommandGateway,
+)
 
 
 class CommandControllerAdminExemptTests(unittest.TestCase):
@@ -177,7 +180,9 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
         self.assertEqual(admin_result, "Chat Filter disabled for this group.")
         self.assertEqual(admin_service.group_enabled_calls, [("qq:300", False)])
 
-    def test_top_level_disable_rejects_invalid_target_group_without_saving(self) -> None:
+    def test_top_level_disable_rejects_invalid_target_without_saving(
+        self,
+    ) -> None:
         service = _CommandService()
         controller = _controller(service=service, admins=("200",))
 
@@ -203,6 +208,85 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
 
         self.assertEqual(result, COMMAND_PERMISSION_DENIED)
         self.assertEqual(service.overview_calls, [])
+
+    def test_regex_skips_requires_global_admin(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service)
+
+        result = _run(controller.regex_skips(_snapshot(sender_role="admin"), "5"))
+
+        self.assertEqual(result, GLOBAL_DIAGNOSTICS_PERMISSION_DENIED)
+        self.assertEqual(service.regex_skip_calls, [])
+
+    def test_regex_skips_uses_snapshot_diagnostics(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        result = _run(controller.regex_skips(_snapshot(sender_role="member"), "5"))
+
+        self.assertEqual(result, "regex-skips:5")
+        self.assertEqual(service.regex_skip_calls, ["5"])
+
+    def test_action_status_allows_current_group_manager(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service)
+
+        result = _run(controller.action_status(_snapshot(sender_role="admin"), ""))
+
+        self.assertEqual(result, "action-status:qq:100")
+        self.assertEqual(service.action_status_calls, [("qq", "100")])
+
+    def test_action_toggle_target_group_requires_global_admin(self) -> None:
+        manager_service = _CommandService()
+        manager_controller = _controller(service=manager_service)
+
+        manager_result = _run(
+            manager_controller.action_toggle(
+                _snapshot(sender_role="admin"),
+                "mute",
+                "300",
+                "off",
+            )
+        )
+
+        admin_service = _CommandService()
+        admin_controller = _controller(service=admin_service, admins=("200",))
+        admin_result = _run(
+            admin_controller.action_toggle(
+                _snapshot(sender_role="member"),
+                "mute",
+                "300",
+                "off",
+            )
+        )
+
+        self.assertEqual(manager_result, TARGET_GROUP_PERMISSION_DENIED)
+        self.assertEqual(manager_service.action_toggle_calls, [])
+        self.assertEqual(admin_result, "action-toggle:qq:300:mute:off:200")
+        self.assertEqual(
+            admin_service.action_toggle_calls,
+            [("qq", "300", "mute", "off", "200")],
+        )
+
+    def test_action_mode_accepts_current_group_shorthand(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service)
+
+        result = _run(controller.action_mode(_snapshot(sender_role="owner"), "audit"))
+
+        self.assertEqual(result, "action-mode:qq:100:audit:200")
+        self.assertEqual(service.action_mode_calls, [("qq", "100", "audit", "200")])
+
+    def test_action_overview_uses_platform_scope(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        result = _run(
+            controller.action_overview(_snapshot(sender_role="member"), "csv")
+        )
+
+        self.assertEqual(result, "action-overview:qq:csv")
+        self.assertEqual(service.action_overview_calls, [("qq", "csv")])
 
 
 class CommandGatewayAdminExemptTests(unittest.TestCase):
@@ -243,6 +327,33 @@ class CommandGatewayAdminExemptTests(unittest.TestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(len(controller.snapshots), 1)
 
+    def test_gateway_passes_regex_skips_to_controller(self) -> None:
+        controller = _GatewayController()
+        gateway = CommandGateway(controller, _PlatformActionFactory())
+        event = _Event(sender_id="200", sender_role="admin")
+
+        result = _run(gateway.regex_skips(event, "3"))
+
+        self.assertEqual(result, "regex-skips:3:200:admin")
+        self.assertTrue(event.stopped)
+        self.assertEqual(len(controller.snapshots), 1)
+
+    def test_gateway_passes_action_commands_to_controller(self) -> None:
+        controller = _GatewayController()
+        gateway = CommandGateway(controller, _PlatformActionFactory())
+        event = _Event(sender_id="200", sender_role="admin")
+
+        status = _run(gateway.action_status(event, "300"))
+        toggle = _run(gateway.action_toggle(event, "mute", "300", "off"))
+        mode = _run(gateway.action_mode(event, "300", "audit"))
+        overview = _run(gateway.action_overview(event, "csv"))
+
+        self.assertEqual(status, "action-status:300:200:admin")
+        self.assertEqual(toggle, "action-toggle:mute:300:off:200:admin")
+        self.assertEqual(mode, "action-mode:300:audit:200:admin")
+        self.assertEqual(overview, "action-overview:csv:200:admin")
+        self.assertTrue(event.stopped)
+
 
 def _controller(
     *,
@@ -276,6 +387,11 @@ class _CommandService:
         self.admin_exempt_status_calls: list[str | None] = []
         self.group_enabled_calls: list[tuple[str | None, bool]] = []
         self.overview_calls: list[tuple[str, str]] = []
+        self.regex_skip_calls: list[str] = []
+        self.action_status_calls: list[tuple[str, str]] = []
+        self.action_toggle_calls: list[tuple[str, str, str, str, str]] = []
+        self.action_mode_calls: list[tuple[str, str, str, str]] = []
+        self.action_overview_calls: list[tuple[str, str]] = []
 
     def format_group_admin_exempt_status(self, group_key: str | None) -> str:
         self.admin_exempt_status_calls.append(group_key)
@@ -300,6 +416,52 @@ class _CommandService:
     async def format_overview(self, platform: str, output_format: str = "") -> str:
         self.overview_calls.append((platform, output_format))
         return f"overview:{platform}:{output_format}"
+
+    def format_regex_skips(self, limit: str = "") -> str:
+        self.regex_skip_calls.append(limit)
+        return f"regex-skips:{limit}"
+
+    async def format_group_action_policy(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+    ) -> str:
+        self.action_status_calls.append((platform, group_id))
+        return f"action-status:{platform}:{group_id}"
+
+    async def set_group_action_toggle(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        action: str,
+        enabled: str,
+        updated_by: str,
+    ) -> str:
+        self.action_toggle_calls.append(
+            (platform, group_id, action, enabled, updated_by)
+        )
+        return f"action-toggle:{platform}:{group_id}:{action}:{enabled}:{updated_by}"
+
+    async def set_group_action_mode(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        mode: str,
+        updated_by: str,
+    ) -> str:
+        self.action_mode_calls.append((platform, group_id, mode, updated_by))
+        return f"action-mode:{platform}:{group_id}:{mode}:{updated_by}"
+
+    async def format_action_policy_overview(
+        self,
+        platform: str,
+        output_format: str = "",
+    ) -> str:
+        self.action_overview_calls.append((platform, output_format))
+        return f"action-overview:{platform}:{output_format}"
 
 
 class _GatewayController:
@@ -329,6 +491,58 @@ class _GatewayController:
     ) -> str:
         self.snapshots.append(snapshot)
         return f"overview:{output_format}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def regex_skips(
+        self,
+        snapshot: PlatformEventSnapshot,
+        limit: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return f"regex-skips:{limit}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def action_status(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return f"action-status:{group_id}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def action_toggle(
+        self,
+        snapshot: PlatformEventSnapshot,
+        action: str,
+        group_id: str = "",
+        enabled: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return (
+            f"action-toggle:{action}:{group_id}:{enabled}:"
+            f"{snapshot.sender_id}:{snapshot.sender_role}"
+        )
+
+    async def action_mode(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        mode: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return (
+            f"action-mode:{group_id}:{mode}:"
+            f"{snapshot.sender_id}:{snapshot.sender_role}"
+        )
+
+    async def action_overview(
+        self,
+        snapshot: PlatformEventSnapshot,
+        output_format: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return (
+            f"action-overview:{output_format}:"
+            f"{snapshot.sender_id}:{snapshot.sender_role}"
+        )
 
 
 class _PlatformActionFactory:

@@ -7,6 +7,7 @@ from .repository_base import (
     RepositoryBase,
     default_data_root,
 )
+from .repository_action_policy import ActionPolicyRepositoryMixin
 from .repository_mute import MutePolicyRepositoryMixin
 from .repository_push_bindings import PushBindingRepositoryMixin
 from .repository_rules import RuleRepositoryMixin
@@ -18,6 +19,7 @@ from ..domain.rule_models import GlobalRule, RuleType
 
 class ChatFilterRepository(
     RuntimeStateRepositoryMixin,
+    ActionPolicyRepositoryMixin,
     PushBindingRepositoryMixin,
     MutePolicyRepositoryMixin,
     ViolationRepositoryMixin,

@@ -10,7 +10,10 @@ PACKAGE_PARENT = PACKAGE_DIR.parent
 if str(PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(PACKAGE_PARENT))
 
-from astrbot_plugin_chat_filter.domain.rule_models import GlobalRule, RuleType  # noqa: E402
+from astrbot_plugin_chat_filter.domain.rule_models import (  # noqa: E402
+    GlobalRule,
+    RuleType,
+)
 from astrbot_plugin_chat_filter.domain.rule_snapshot import RuleSnapshot  # noqa: E402
 from astrbot_plugin_chat_filter.domain.settings import ChatFilterSettings  # noqa: E402
 
@@ -45,6 +48,11 @@ class RuleSnapshotTests(unittest.TestCase):
         self.assertEqual(snapshot.global_regex_rule_count, 1)
         self.assertEqual(snapshot.global_regex_rules[0].pattern, "root")
         self.assertIsNotNone(snapshot.global_regex_rules[0].compiled.search("ROOT"))
+        self.assertEqual(
+            [skip.reason for skip in snapshot.global_regex_rule_skips],
+            ["compile_error", "high_risk"],
+        )
+        self.assertEqual(snapshot.global_regex_rule_skip_count, 2)
 
     def test_snapshot_expands_configured_regex_gap_placeholder(self) -> None:
         settings = ChatFilterSettings.from_config(
@@ -63,6 +71,51 @@ class RuleSnapshotTests(unittest.TestCase):
         self.assertIsNotNone(regex_rule.compiled.search("aXXb"))
         self.assertIsNone(regex_rule.compiled.search("aXXXb"))
 
+    def test_snapshot_records_skipped_regex_rule_reasons(self) -> None:
+        settings = ChatFilterSettings.from_config({})
+        repository = FakeRuleRepository(
+            [
+                _rule(1, "regex", "root", enabled=True),
+                _rule(2, "regex", " ", enabled=True),
+                _rule(3, "regex", "root", enabled=True),
+                _rule(4, "regex", "x" * 501, enabled=True),
+                _rule(5, "regex", 42, enabled=True),
+            ]
+        )
+
+        snapshot = RuleSnapshot.from_repository(repository, settings=settings)
+
+        self.assertEqual(snapshot.global_regex_rule_count, 1)
+        self.assertEqual(
+            [
+                (skip.source_id, skip.reason)
+                for skip in snapshot.global_regex_rule_skips
+            ],
+            [
+                ("2", "empty"),
+                ("3", "duplicate"),
+                ("4", "too_long"),
+                ("5", "non_string"),
+            ],
+        )
+        self.assertEqual(snapshot.global_regex_rule_skips[3].pattern_preview, "<int>")
+
+    def test_snapshot_records_regex_max_count_skips(self) -> None:
+        settings = ChatFilterSettings.from_config({})
+        repository = FakeRuleRepository(
+            [
+                _rule(rule_id, "regex", f"rule-{rule_id}", enabled=True)
+                for rule_id in range(1, 52)
+            ]
+        )
+
+        snapshot = RuleSnapshot.from_repository(repository, settings=settings)
+
+        self.assertEqual(snapshot.global_regex_rule_count, 50)
+        self.assertEqual(snapshot.global_regex_rule_skip_count, 1)
+        self.assertEqual(snapshot.global_regex_rule_skips[0].source_id, "51")
+        self.assertEqual(snapshot.global_regex_rule_skips[0].reason, "max_count")
+
 
 class FakeRuleRepository:
     def __init__(self, rules: list[GlobalRule]) -> None:
@@ -77,14 +130,14 @@ class FakeRuleRepository:
 def _rule(
     rule_id: int,
     rule_type: RuleType,
-    pattern: str,
+    pattern: object,
     *,
     enabled: bool,
 ) -> GlobalRule:
     return GlobalRule(
         id=rule_id,
         rule_type=rule_type,
-        pattern=pattern,
+        pattern=pattern,  # type: ignore[arg-type]
         position=rule_id,
         enabled=enabled,
         source="test",

@@ -10,7 +10,8 @@ from .settings import (
     DEFAULT_MAX_REGEX_RULE_LENGTH,
     ChatFilterSettings,
     RegexRule,
-    normalize_regex_rules,
+    RegexRuleSkip,
+    normalize_regex_rules_with_diagnostics,
     normalize_words,
 )
 
@@ -25,8 +26,10 @@ class RuleSnapshot:
     global_words: tuple[str, ...]
     global_regex_rules: tuple[RegexRule, ...]
     case_sensitive: bool
+    global_regex_rule_skips: tuple[RegexRuleSkip, ...] = ()
     global_word_count: int = field(init=False)
     global_regex_rule_count: int = field(init=False)
+    global_regex_rule_skip_count: int = field(init=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "global_word_count", len(self.global_words))
@@ -34,6 +37,11 @@ class RuleSnapshot:
             self,
             "global_regex_rule_count",
             len(self.global_regex_rules),
+        )
+        object.__setattr__(
+            self,
+            "global_regex_rule_skip_count",
+            len(self.global_regex_rule_skips),
         )
 
     @classmethod
@@ -62,19 +70,18 @@ class RuleSnapshot:
             max_count=settings.max_word_count,
             max_length=settings.max_word_length,
         )
-        global_regex_rules = normalize_regex_rules(
-            tuple(
-                rule.pattern
-                for rule in enabled_rules
-                if rule.rule_type == "regex"
-            ),
+        regex_rules = tuple(rule for rule in enabled_rules if rule.rule_type == "regex")
+        global_regex_result = normalize_regex_rules_with_diagnostics(
+            tuple(rule.pattern for rule in regex_rules),
             case_sensitive=settings.case_sensitive,
             max_count=DEFAULT_MAX_REGEX_RULE_COUNT,
             max_length=DEFAULT_MAX_REGEX_RULE_LENGTH,
             regex_gap_max=settings.regex_gap_max,
+            source_ids=tuple(str(rule.id) for rule in regex_rules),
         )
         return cls(
             global_words=global_words,
-            global_regex_rules=global_regex_rules,
+            global_regex_rules=global_regex_result.rules,
             case_sensitive=settings.case_sensitive,
+            global_regex_rule_skips=global_regex_result.skipped,
         )

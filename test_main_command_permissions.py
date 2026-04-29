@@ -174,14 +174,14 @@ class MainCommandPermissionTests(unittest.TestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(command_service.group_enabled_calls, [])
 
-    def test_chatfilter_group_enable_denies_group_owner_when_managers_disallowed(
+    def test_group_enable_denies_group_owner_when_managers_disallowed(
         self,
     ) -> None:
         command_service = _CommandService()
         plugin = _plugin(admins=(), command_service=command_service)
         event = _event(sender_id="200", role="owner")
 
-        results = _collect_async_generator(plugin.chatfilter_group_enable(event))
+        results = _collect_async_generator(plugin.cf_group_enable(event))
 
         self.assertEqual(results, [GROUP_ENABLE_PERMISSION_DENIED])
         self.assertTrue(event.stopped)
@@ -234,7 +234,7 @@ class MainCommandPermissionTests(unittest.TestCase):
         plugin = _plugin(command_service=command_service)
         event = _event(sender_id="200", role="owner")
 
-        results = _collect_async_generator(plugin.chatfilter_group_exempt(event, "on"))
+        results = _collect_async_generator(plugin.cf_group_exempt(event, "on"))
 
         self.assertEqual(
             results,

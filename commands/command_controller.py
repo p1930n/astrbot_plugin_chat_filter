@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .command_auth import CommandAuthorizer
+from .action_policy_command_service import ACTION_POLICY_USAGE
 from .command_service import ChatFilterCommandService
 from .command_validation import is_valid_qq_group_id
 from ..services.file_probe_service import FileProbeService
@@ -10,16 +11,16 @@ from ..services.report_service import ViolationReportService
 
 
 GROUP_ADMIN_EXEMPT_USAGE = (
-    "Usage: .cf group admin-exempt status|enable|disable "
-    "or /chatfilter group admin-exempt status|enable|disable "
-    "(alias: exempt)"
+    "Usage: .cf group admin-exempt status|enable|disable (alias: exempt)"
 )
-GROUP_ENABLE_USAGE = "Usage: .cf enable [group id] or /chatfilter enable [group id]"
-GROUP_DISABLE_USAGE = (
-    "Usage: .cf disable [group id] or /chatfilter disable [group id]"
-)
+GROUP_ENABLE_USAGE = "Usage: .cf enable [group id]"
+GROUP_DISABLE_USAGE = "Usage: .cf disable [group id]"
 TARGET_GROUP_PERMISSION_DENIED = (
     "Chat Filter target group permission denied: "
+    "requires AstrBot admin permission."
+)
+GLOBAL_DIAGNOSTICS_PERMISSION_DENIED = (
+    "Chat Filter diagnostics permission denied: "
     "requires AstrBot admin permission."
 )
 
@@ -213,6 +214,97 @@ class CommandController:
             output_format,
         )
 
+    async def regex_skips(
+        self,
+        snapshot: PlatformEventSnapshot,
+        limit: str = "",
+    ) -> str:
+        if not self.check_global_permission(snapshot):
+            return GLOBAL_DIAGNOSTICS_PERMISSION_DENIED
+        return self._command_service.format_regex_skips(limit)
+
+    async def action_status(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+    ) -> str:
+        target_group_id = _target_group_id(snapshot, group_id)
+        if target_group_id is None:
+            return ACTION_POLICY_USAGE
+
+        denial = self._action_policy_denial(snapshot, target_group_id)
+        if denial:
+            return denial
+
+        return await self._command_service.format_group_action_policy(
+            platform=snapshot.platform,
+            group_id=target_group_id,
+        )
+
+    async def action_toggle(
+        self,
+        snapshot: PlatformEventSnapshot,
+        action: str,
+        group_id: str = "",
+        enabled: str = "",
+    ) -> str:
+        if not enabled and _looks_like_action_toggle(group_id):
+            enabled = group_id
+            group_id = ""
+        target_group_id = _target_group_id(snapshot, group_id)
+        if target_group_id is None or not enabled:
+            return ACTION_POLICY_USAGE
+
+        denial = self._action_policy_denial(snapshot, target_group_id)
+        if denial:
+            return denial
+
+        return await self._command_service.set_group_action_toggle(
+            platform=snapshot.platform,
+            group_id=target_group_id,
+            action=action,
+            enabled=enabled,
+            updated_by=snapshot.sender_id,
+        )
+
+    async def action_mode(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        mode: str = "",
+    ) -> str:
+        if not mode and group_id.strip().casefold() in ("strict", "audit"):
+            mode = group_id
+            group_id = ""
+        target_group_id = _target_group_id(snapshot, group_id)
+        if target_group_id is None or not mode:
+            return ACTION_POLICY_USAGE
+
+        denial = self._action_policy_denial(snapshot, target_group_id)
+        if denial:
+            return denial
+
+        return await self._command_service.set_group_action_mode(
+            platform=snapshot.platform,
+            group_id=target_group_id,
+            mode=mode,
+            updated_by=snapshot.sender_id,
+        )
+
+    async def action_overview(
+        self,
+        snapshot: PlatformEventSnapshot,
+        output_format: str = "",
+    ) -> str:
+        denial = self.command_denial(snapshot)
+        if denial:
+            return denial
+
+        return await self._command_service.format_action_policy_overview(
+            snapshot.platform,
+            output_format,
+        )
+
     async def enable(
         self,
         snapshot: PlatformEventSnapshot,
@@ -315,6 +407,17 @@ class CommandController:
             return denial
         return await self.group_admin_exempt_text(snapshot, action)
 
+    def _action_policy_denial(
+        self,
+        snapshot: PlatformEventSnapshot,
+        target_group_id: str,
+    ) -> str | None:
+        if target_group_id != snapshot.group_id:
+            if not self.check_global_permission(snapshot):
+                return TARGET_GROUP_PERMISSION_DENIED
+            return None
+        return self.command_denial(snapshot)
+
     async def group_admin_exempt_text(
         self,
         snapshot: PlatformEventSnapshot,
@@ -347,9 +450,36 @@ def _target_group_key(
     snapshot: PlatformEventSnapshot,
     group_id: str = "",
 ) -> str | None:
-    target_group_id = group_id.strip()
-    if not target_group_id:
-        return _group_key(snapshot)
-    if not snapshot.platform or not is_valid_qq_group_id(target_group_id):
+    target_group_id = _target_group_id(snapshot, group_id)
+    if target_group_id is None or not snapshot.platform:
         return None
     return f"{snapshot.platform}:{target_group_id}"
+
+
+def _target_group_id(
+    snapshot: PlatformEventSnapshot,
+    group_id: str = "",
+) -> str | None:
+    target_group_id = group_id.strip()
+    if not target_group_id:
+        if not snapshot.group_id:
+            return None
+        return snapshot.group_id
+    if not snapshot.platform or not is_valid_qq_group_id(target_group_id):
+        return None
+    return target_group_id
+
+
+def _looks_like_action_toggle(value: str) -> bool:
+    return value.strip().casefold() in (
+        "on",
+        "enable",
+        "enabled",
+        "true",
+        "1",
+        "off",
+        "disable",
+        "disabled",
+        "false",
+        "0",
+    )

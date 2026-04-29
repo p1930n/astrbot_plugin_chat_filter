@@ -199,6 +199,73 @@ class CommandGateway:
             ),
         )
 
+    async def regex_skips(self, event: AstrMessageEvent, limit: str = ""):
+        return self.command_result(
+            event,
+            await self._controller.regex_skips(
+                dehydrate_event_snapshot(event),
+                limit,
+            ),
+        )
+
+    async def action_status(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.action_status(
+                dehydrate_event_snapshot(event),
+                group_id,
+            ),
+        )
+
+    async def action_toggle(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        group_id: str = "",
+        enabled: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.action_toggle(
+                dehydrate_event_snapshot(event),
+                action,
+                group_id,
+                enabled,
+            ),
+        )
+
+    async def action_mode(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        mode: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.action_mode(
+                dehydrate_event_snapshot(event),
+                group_id,
+                mode,
+            ),
+        )
+
+    async def action_overview(
+        self,
+        event: AstrMessageEvent,
+        output_format: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.action_overview(
+                dehydrate_event_snapshot(event),
+                output_format,
+            ),
+        )
+
     async def enable(self, event: AstrMessageEvent, group_id: str = ""):
         return self.command_result(
             event,

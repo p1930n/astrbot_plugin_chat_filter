@@ -111,6 +111,16 @@ class GroupMuteEscalationPolicy:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupActionPolicy:
+    platform: str
+    group_id: str
+    mute_enabled: bool = True
+    recall_enabled: bool = True
+    forward_enabled: bool = True
+    mode: str = "strict"
+
+
+@dataclass(frozen=True, slots=True)
 class MuteEscalationDecision:
     duration_seconds: int
     violation_count: int

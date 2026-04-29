@@ -5,18 +5,15 @@ from hashlib import sha256
 from typing import Protocol
 
 from ..domain.models import ChatMessage, ViolationEvent
-from ..platform.platform_actions import PlatformActions, ViolationActionStatuses
 from ..persistence.repository import ChatFilterRepository
 
 
 VIOLATION_EXCERPT_LENGTH = 300
+INITIAL_ACTION_STATUS = "pending"
 
 
 class ViolationRecordLogger(Protocol):
     def error(self, message: str, *args: object) -> None:
-        ...
-
-    def warning(self, message: str, *args: object) -> None:
         ...
 
 
@@ -33,12 +30,10 @@ class ViolationRecorder:
         self,
         message: ChatMessage,
         matched_word: str | None,
-        platform_actions: PlatformActions,
     ) -> int | None:
         if not matched_word:
             return None
 
-        action_statuses = self._initial_action_statuses(message, platform_actions)
         violation = ViolationEvent(
             platform=message.platform,
             group_id=message.group_id,
@@ -48,32 +43,21 @@ class ViolationRecorder:
             matched_keyword=matched_word,
             matched_content=_matched_excerpt(message.text, matched_word),
             raw_message_digest=_message_digest(message.text),
-            action_mute_status=action_statuses.mute,
-            action_recall_status=action_statuses.recall,
-            action_forward_status=action_statuses.forward,
+            action_mute_status=INITIAL_ACTION_STATUS,
+            action_recall_status=INITIAL_ACTION_STATUS,
+            action_forward_status=INITIAL_ACTION_STATUS,
         )
         try:
-            return await asyncio.to_thread(self._repository.record_violation, violation)
+            return await asyncio.to_thread(
+                self._repository.record_violation,
+                violation,
+            )
         except Exception as exc:
             self._logger.error(
                 "Chat Filter violation record failed: error_type=%s",
                 type(exc).__name__,
             )
             return None
-
-    def _initial_action_statuses(
-        self,
-        message: ChatMessage,
-        platform_actions: PlatformActions,
-    ) -> ViolationActionStatuses:
-        try:
-            return platform_actions.initial_violation_statuses(message.platform)
-        except Exception as exc:
-            self._logger.warning(
-                "Chat Filter platform action status probe failed: error_type=%s",
-                type(exc).__name__,
-            )
-            return ViolationActionStatuses.unsupported()
 
 
 def _matched_excerpt(text: str, matched_word: str) -> str:

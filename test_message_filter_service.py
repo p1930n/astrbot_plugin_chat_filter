@@ -53,7 +53,7 @@ class MessageFilterServiceTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(matcher.calls), 1)
-        self.assertEqual(recorder.calls, [(message, "blocked", platform_actions)])
+        self.assertEqual(recorder.calls, [(message, "blocked")])
         self.assertEqual(executor.calls, [(42, message, platform_actions)])
         self.assertEqual(platform_actions.text_logs, [("qq", "100", "warn")])
 
@@ -76,10 +76,11 @@ class MessageFilterServiceTests(unittest.TestCase):
         self.assertEqual(recorder.calls, [])
         self.assertEqual(executor.calls, [])
 
-    def test_records_disabled_preserves_stop_and_warn_without_actions(self) -> None:
+    def test_records_disabled_preserves_stop_warn_and_actions(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
         recorder = _Recorder(violation_id=42)
         executor = _Executor()
+        platform_actions = _PlatformActions()
         service = _service(
             matcher=matcher,
             recorder=recorder,
@@ -93,7 +94,7 @@ class MessageFilterServiceTests(unittest.TestCase):
         )
 
         result = asyncio.run(
-            service.handle_group_message(_message("blocked"), _PlatformActions())
+            service.handle_group_message(_message("blocked"), platform_actions)
         )
 
         self.assertEqual(
@@ -103,7 +104,28 @@ class MessageFilterServiceTests(unittest.TestCase):
             ),
         )
         self.assertEqual(recorder.calls, [])
-        self.assertEqual(executor.calls, [])
+        self.assertEqual(
+            executor.calls,
+            [(None, _message("blocked"), platform_actions)],
+        )
+
+    def test_record_failure_still_executes_actions(self) -> None:
+        matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
+        recorder = _Recorder(violation_id=None)
+        executor = _Executor()
+        platform_actions = _PlatformActions()
+        service = _service(
+            matcher=matcher,
+            recorder=recorder,
+            executor=executor,
+        )
+        message = _message("blocked")
+
+        result = asyncio.run(service.handle_group_message(message, platform_actions))
+
+        self.assertEqual(result, MessageFilterResult(stop_event=True))
+        self.assertEqual(recorder.calls, [(message, "blocked")])
+        self.assertEqual(executor.calls, [(None, message, platform_actions)])
 
     def test_warning_message_send_failure_is_logged_without_user_error(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
@@ -169,26 +191,25 @@ class _Matcher:
 class _Recorder:
     def __init__(self, violation_id: int | None) -> None:
         self._violation_id = violation_id
-        self.calls: list[tuple[ChatMessage, str | None, _PlatformActions]] = []
+        self.calls: list[tuple[ChatMessage, str | None]] = []
 
     async def record(
         self,
         message: ChatMessage,
         matched_word: str | None,
-        platform_actions: "_PlatformActions",
     ) -> int | None:
-        self.calls.append((message, matched_word, platform_actions))
+        self.calls.append((message, matched_word))
         return self._violation_id
 
 
 class _Executor:
     def __init__(self) -> None:
-        self.calls: list[tuple[int, ChatMessage, _PlatformActions]] = []
+        self.calls: list[tuple[int | None, ChatMessage, _PlatformActions]] = []
 
     async def execute(
         self,
         *,
-        violation_id: int,
+        violation_id: int | None,
         message: ChatMessage,
         platform_actions: "_PlatformActions",
     ) -> None:
