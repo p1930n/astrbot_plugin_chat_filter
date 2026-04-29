@@ -1,369 +1,323 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1627" viewBox="0 0 1440 1627" role="img" aria-labelledby="title desc">
-<title id="title">Chat Filter 完整 metrics 快照柱状图</title>
-<desc id="desc">展示用户提供的 Chat Filter counters 和 timings 指标，包括计数、样本数量、平均耗时、最大耗时和累计耗时。</desc>
-<rect width="100%" height="100%" fill="#f8fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="910" viewBox="0 0 1800 910" role="img" aria-labelledby="title desc">
+<title id="title">Chat Filter metrics 蓝色主题柱状图</title>
+<desc id="desc">两列一行展示 Chat Filter counters 与 timings 指标。柱状图为蓝色主题，背景为白色。</desc>
+<defs>
+  <linearGradient id="barBlue" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#1e40af"/>
+    <stop offset="62%" stop-color="#2563eb"/>
+    <stop offset="100%" stop-color="#60a5fa"/>
+  </linearGradient>
+  <linearGradient id="barBlueSoft" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0%" stop-color="#0369a1"/>
+    <stop offset="100%" stop-color="#38bdf8"/>
+  </linearGradient>
+  <filter id="softShadow" x="-5%" y="-5%" width="110%" height="115%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#1e3a8a" flood-opacity="0.12"/>
+  </filter>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
 <style>
   text { font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", Arial, sans-serif; fill: #0f172a; }
-  .page-title { font-size: 26px; font-weight: 700; }
-  .page-subtitle { font-size: 14px; fill: #475569; }
-  .panel-title { font-size: 19px; font-weight: 700; }
-  .subtitle { font-size: 12px; fill: #475569; }
-  .axis { stroke: #cbd5e1; stroke-width: 1; }
-  .grid { stroke: #e2e8f0; stroke-width: 1; }
-  .tick { font-size: 11px; fill: #64748b; }
-  .label { font-size: 11px; fill: #334155; }
-  .metric { font-size: 9px; fill: #64748b; }
-  .value { font-size: 11px; fill: #0f172a; font-weight: 700; }
+  .title { font-size: 27px; font-weight: 800; }
+  .subtitle { font-size: 14px; fill: #475569; }
+  .takeaway { font-size: 14px; fill: #1e40af; font-weight: 800; }
+  .panel-title { font-size: 20px; font-weight: 800; fill: #0f172a; }
+  .panel-subtitle { font-size: 12px; fill: #64748b; }
+  .axis { stroke: #bfdbfe; stroke-width: 1; }
+  .ref-line { stroke: #93c5fd; stroke-width: 0.7; stroke-dasharray: 7 3; stroke-linecap: butt; shape-rendering: crispEdges; opacity: 0.68; }
+  .row-label { font-size: 13px; font-weight: 700; fill: #1e293b; }
+  .small { font-size: 11px; fill: #475569; }
+  .tick { font-size: 10px; fill: #1d4ed8; font-weight: 700; }
+  .value { font-size: 12px; font-weight: 800; fill: #0f172a; }
+  .header { font-size: 12px; font-weight: 800; fill: #1d4ed8; }
+  .note { font-size: 12px; fill: #475569; }
+  .issue-title { font-size: 15px; font-weight: 800; fill: #1e40af; }
+  .issue-label { font-size: 11px; font-weight: 800; fill: #ffffff; }
+  .issue-name { font-size: 13px; font-weight: 800; fill: #0f172a; }
+  .issue-text { font-size: 11px; fill: #334155; }
 </style>
-<text x="56" y="36" class="page-title">Chat Filter 完整 Metrics 快照柱状图</text>
-<text x="56" y="60" class="page-subtitle">数据来源：1000 个入口事件的运行中 metrics 快照；耗时图使用对数刻度以保留小耗时指标的可读性。</text>
-<rect x="56" y="72" width="650" height="445" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-<text x="78" y="104" class="panel-title">Counters：消息入口</text>
-<text x="78" y="128" class="subtitle">入口事件、命中与未命中/非消息事件计数。</text>
-<line x1="122.00" y1="405.00" x2="682.00" y2="405.00" class="axis"/>
-<line x1="122.00" y1="170.00" x2="122.00" y2="405.00" class="axis"/>
-<line x1="122.00" y1="405.00" x2="682.00" y2="405.00" class="grid"/>
-<text x="114.00" y="409.00" text-anchor="end" class="tick">0</text>
-<line x1="122.00" y1="346.25" x2="682.00" y2="346.25" class="grid"/>
-<text x="114.00" y="350.25" text-anchor="end" class="tick">250</text>
-<line x1="122.00" y1="287.50" x2="682.00" y2="287.50" class="grid"/>
-<text x="114.00" y="291.50" text-anchor="end" class="tick">500</text>
-<line x1="122.00" y1="228.75" x2="682.00" y2="228.75" class="grid"/>
-<text x="114.00" y="232.75" text-anchor="end" class="tick">750</text>
-<line x1="122.00" y1="170.00" x2="682.00" y2="170.00" class="grid"/>
-<text x="114.00" y="174.00" text-anchor="end" class="tick">1000</text>
+<text x="40" y="38" class="title">Chat Filter Metrics 快照</text>
+<text x="40" y="64" class="subtitle">两列一行：左侧为全部 counters，右侧为 timings 的 count / avg / max / total。图中仅保留中文指标名，完整 metric 名写入悬停标题。</text>
+<rect x="40" y="76" width="690" height="24" rx="0.5" fill="#eff6ff" stroke="#bfdbfe"/>
+<text x="54" y="93" class="takeaway">核心结论：入口慢在命中后等待 outbox 入队，不是匹配器慢。</text>
+<rect x="40" y="112" width="610" height="536" rx="0.5" fill="#ffffff" stroke="#bfdbfe" filter="url(#softShadow)"/>
+<rect x="40" y="112" width="610" height="4" rx="0.5" fill="#2563eb"/>
+<text x="64" y="152" class="panel-title">Counters</text>
+<text x="64" y="174" class="panel-subtitle">全部可参考计数指标；虚线为线性对比基准。</text>
+<line x1="330.00" y1="200.00" x2="330.00" y2="567.00" class="ref-line"/>
+<text x="330.00" y="192.00" text-anchor="middle" class="tick">250</text>
+<line x1="410.00" y1="200.00" x2="410.00" y2="567.00" class="ref-line"/>
+<text x="410.00" y="192.00" text-anchor="middle" class="tick">500</text>
+<line x1="490.00" y1="200.00" x2="490.00" y2="567.00" class="ref-line"/>
+<text x="490.00" y="192.00" text-anchor="middle" class="tick">750</text>
+<line x1="570.00" y1="200.00" x2="570.00" y2="567.00" class="ref-line"/>
+<text x="570.00" y="192.00" text-anchor="middle" class="tick">1000</text>
 <g><title>message.handle_group_message.total = 1000</title>
-<rect x="191.33" y="170.00" width="48.00" height="235.00" rx="4" fill="#2563eb"/>
-<text x="215.33" y="182.00" text-anchor="middle" class="value">1000</text>
-<text x="215.33" y="425.00" text-anchor="end" transform="rotate(-35 215.33 425.00)" class="label">handle total</text>
-<text x="215.33" y="439.00" text-anchor="end" transform="rotate(-35 215.33 439.00)" class="metric">message.handle_group_message.total</text>
+<text x="66" y="214" class="row-label">入口事件</text>
+<rect x="250.00" y="200.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="200.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="586" y="214" class="value">1000</text>
 </g>
 <g><title>message.matched.total = 990</title>
-<rect x="378.00" y="172.35" width="48.00" height="232.65" rx="4" fill="#16a34a"/>
-<text x="402.00" y="182.00" text-anchor="middle" class="value">990</text>
-<text x="402.00" y="425.00" text-anchor="end" transform="rotate(-35 402.00 425.00)" class="label">matched</text>
-<text x="402.00" y="439.00" text-anchor="end" transform="rotate(-35 402.00 439.00)" class="metric">message.matched.total</text>
+<text x="66" y="253" class="row-label">真实命中</text>
+<rect x="250.00" y="239.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="239.00" width="316.80" height="16.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="586" y="253" class="value">990</text>
 </g>
 <g><title>message.unmatched.total = 10</title>
-<rect x="564.67" y="402.65" width="48.00" height="2.35" rx="4" fill="#94a3b8"/>
-<text x="588.67" y="395.65" text-anchor="middle" class="value">10</text>
-<text x="588.67" y="425.00" text-anchor="end" transform="rotate(-35 588.67 425.00)" class="label">unmatched/event</text>
-<text x="588.67" y="439.00" text-anchor="end" transform="rotate(-35 588.67 439.00)" class="metric">message.unmatched.total</text>
+<text x="66" y="292" class="row-label">非消息/未命中</text>
+<rect x="250.00" y="278.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="278.00" width="3.20" height="16.00" rx="0.5" ry="0.5" fill="#2563eb"/>
+<text x="586" y="292" class="value">10</text>
 </g>
-<rect x="750" y="72" width="650" height="445" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-<text x="772" y="104" class="panel-title">Counters：队列、记录与动作</text>
-<text x="772" y="128" class="subtitle">所有成功/入队/完成类计数；forward success</text>
-<text x="772" y="145" class="subtitle">目前不宜直接等同违规消息数。</text>
-<line x1="816.00" y1="405.00" x2="1376.00" y2="405.00" class="axis"/>
-<line x1="816.00" y1="170.00" x2="816.00" y2="405.00" class="axis"/>
-<line x1="816.00" y1="405.00" x2="1376.00" y2="405.00" class="grid"/>
-<text x="808.00" y="409.00" text-anchor="end" class="tick">0</text>
-<line x1="816.00" y1="346.25" x2="1376.00" y2="346.25" class="grid"/>
-<text x="808.00" y="350.25" text-anchor="end" class="tick">182</text>
-<line x1="816.00" y1="287.50" x2="1376.00" y2="287.50" class="grid"/>
-<text x="808.00" y="291.50" text-anchor="end" class="tick">364</text>
-<line x1="816.00" y1="228.75" x2="1376.00" y2="228.75" class="grid"/>
-<text x="808.00" y="232.75" text-anchor="end" class="tick">547</text>
-<line x1="816.00" y1="170.00" x2="1376.00" y2="170.00" class="grid"/>
-<text x="808.00" y="174.00" text-anchor="end" class="tick">729</text>
 <g><title>violation_job.enqueued.total = 729</title>
-<rect x="833.60" y="170.00" width="44.80" height="235.00" rx="4" fill="#f59e0b"/>
-<text x="856.00" y="182.00" text-anchor="middle" class="value">729</text>
-<text x="856.00" y="425.00" text-anchor="end" transform="rotate(-35 856.00 425.00)" class="label">job enqueued</text>
-<text x="856.00" y="439.00" text-anchor="end" transform="rotate(-35 856.00 439.00)" class="metric">violation_job.enqueued.total</text>
+<text x="66" y="331" class="row-label">已入队</text>
+<rect x="250.00" y="317.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="317.00" width="233.28" height="16.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="586" y="331" class="value">729</text>
 </g>
 <g><title>violation_job.completed.total = 67</title>
-<rect x="913.60" y="383.40" width="44.80" height="21.60" rx="4" fill="#475569"/>
-<text x="936.00" y="376.40" text-anchor="middle" class="value">67</text>
-<text x="936.00" y="425.00" text-anchor="end" transform="rotate(-35 936.00 425.00)" class="label">job completed</text>
-<text x="936.00" y="439.00" text-anchor="end" transform="rotate(-35 936.00 439.00)" class="metric">violation_job.completed.total</text>
+<text x="66" y="370" class="row-label">任务完成</text>
+<rect x="250.00" y="356.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="356.00" width="21.44" height="16.00" rx="0.5" ry="0.5" fill="#60a5fa"/>
+<text x="586" y="370" class="value">67</text>
 </g>
 <g><title>violation_record.success.total = 68</title>
-<rect x="993.60" y="383.08" width="44.80" height="21.92" rx="4" fill="#059669"/>
-<text x="1016.00" y="376.08" text-anchor="middle" class="value">68</text>
-<text x="1016.00" y="425.00" text-anchor="end" transform="rotate(-35 1016.00 425.00)" class="label">record success</text>
-<text x="1016.00" y="439.00" text-anchor="end" transform="rotate(-35 1016.00 439.00)" class="metric">violation_record.success.total</text>
+<text x="66" y="409" class="row-label">记录成功</text>
+<rect x="250.00" y="395.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="395.00" width="21.76" height="16.00" rx="0.5" ry="0.5" fill="#0284c7"/>
+<text x="586" y="409" class="value">68</text>
 </g>
 <g><title>violation_action.mute.success.total = 68</title>
-<rect x="1073.60" y="383.08" width="44.80" height="21.92" rx="4" fill="#ea580c"/>
-<text x="1096.00" y="376.08" text-anchor="middle" class="value">68</text>
-<text x="1096.00" y="425.00" text-anchor="end" transform="rotate(-35 1096.00 425.00)" class="label">mute success</text>
-<text x="1096.00" y="439.00" text-anchor="end" transform="rotate(-35 1096.00 439.00)" class="metric">violation_action.mute.success.total</text>
+<text x="66" y="448" class="row-label">禁言成功</text>
+<rect x="250.00" y="434.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="434.00" width="21.76" height="16.00" rx="0.5" ry="0.5" fill="#0369a1"/>
+<text x="586" y="448" class="value">68</text>
 </g>
 <g><title>violation_action.recall.success.total = 68</title>
-<rect x="1153.60" y="383.08" width="44.80" height="21.92" rx="4" fill="#db2777"/>
-<text x="1176.00" y="376.08" text-anchor="middle" class="value">68</text>
-<text x="1176.00" y="425.00" text-anchor="end" transform="rotate(-35 1176.00 425.00)" class="label">recall success</text>
-<text x="1176.00" y="439.00" text-anchor="end" transform="rotate(-35 1176.00 439.00)" class="metric">violation_action.recall.success.total</text>
+<text x="66" y="487" class="row-label">撤回成功</text>
+<rect x="250.00" y="473.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="473.00" width="21.76" height="16.00" rx="0.5" ry="0.5" fill="#0ea5e9"/>
+<text x="586" y="487" class="value">68</text>
 </g>
 <g><title>violation_action.forward.success.total = 203</title>
-<rect x="1233.60" y="339.56" width="44.80" height="65.44" rx="4" fill="#7c3aed"/>
-<text x="1256.00" y="332.56" text-anchor="middle" class="value">203</text>
-<text x="1256.00" y="425.00" text-anchor="end" transform="rotate(-35 1256.00 425.00)" class="label">forward success</text>
-<text x="1256.00" y="439.00" text-anchor="end" transform="rotate(-35 1256.00 439.00)" class="metric">violation_action.forward.success.total</text>
+<text x="66" y="526" class="row-label">转发成功</text>
+<rect x="250.00" y="512.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="512.00" width="64.96" height="16.00" rx="0.5" ry="0.5" fill="#1e3a8a"/>
+<text x="586" y="526" class="value">203</text>
 </g>
 <g><title>violation_action.text_log.success.total = 135</title>
-<rect x="1313.60" y="361.48" width="44.80" height="43.52" rx="4" fill="#0891b2"/>
-<text x="1336.00" y="354.48" text-anchor="middle" class="value">135</text>
-<text x="1336.00" y="425.00" text-anchor="end" transform="rotate(-35 1336.00 425.00)" class="label">text log success</text>
-<text x="1336.00" y="439.00" text-anchor="end" transform="rotate(-35 1336.00 439.00)" class="metric">violation_action.text_log.success.total</text>
+<text x="66" y="565" class="row-label">文本日志成功</text>
+<rect x="250.00" y="551.00" width="320.00" height="16.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="250.00" y="551.00" width="43.20" height="16.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="586" y="565" class="value">135</text>
 </g>
-<rect x="56" y="561" width="650" height="445" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-<text x="78" y="593" class="panel-title">Timings：样本数量</text>
-<text x="78" y="617" class="subtitle">每个 timing 指标实际记录到的样本数；入口样本数低于入口</text>
-<text x="78" y="634" class="subtitle">total，说明抓取时仍有入口未返回。</text>
-<line x1="122.00" y1="894.00" x2="682.00" y2="894.00" class="axis"/>
-<line x1="122.00" y1="659.00" x2="122.00" y2="894.00" class="axis"/>
-<line x1="122.00" y1="894.00" x2="682.00" y2="894.00" class="grid"/>
-<text x="114.00" y="898.00" text-anchor="end" class="tick">0</text>
-<line x1="122.00" y1="835.25" x2="682.00" y2="835.25" class="grid"/>
-<text x="114.00" y="839.25" text-anchor="end" class="tick">250</text>
-<line x1="122.00" y1="776.50" x2="682.00" y2="776.50" class="grid"/>
-<text x="114.00" y="780.50" text-anchor="end" class="tick">500</text>
-<line x1="122.00" y1="717.75" x2="682.00" y2="717.75" class="grid"/>
-<text x="114.00" y="721.75" text-anchor="end" class="tick">750</text>
-<line x1="122.00" y1="659.00" x2="682.00" y2="659.00" class="grid"/>
-<text x="114.00" y="663.00" text-anchor="end" class="tick">1000</text>
-<g><title>message.handle_group_message.ms = 739</title>
-<rect x="137.40" y="720.34" width="39.20" height="173.66" rx="4" fill="#dc2626"/>
-<text x="157.00" y="713.34" text-anchor="middle" class="value">739</text>
-<text x="157.00" y="914.00" text-anchor="end" transform="rotate(-35 157.00 914.00)" class="label">handle</text>
-<text x="157.00" y="928.00" text-anchor="end" transform="rotate(-35 157.00 928.00)" class="metric">message.handle_group_message.ms</text>
+<rect x="680" y="112" width="1080" height="536" rx="0.5" fill="#ffffff" stroke="#bfdbfe" filter="url(#softShadow)"/>
+<rect x="680" y="112" width="1080" height="4" rx="0.5" fill="#2563eb"/>
+<text x="704" y="152" class="panel-title">Timings</text>
+<text x="704" y="174" class="panel-subtitle">每列单独使用对比基准；avg/max/total 为对数刻度。</text>
+<text x="900" y="184" class="header">count</text>
+<line x1="900" y1="195" x2="1008" y2="195" class="axis"/>
+<text x="1040" y="184" class="header">avg_ms</text>
+<line x1="1040" y1="195" x2="1198" y2="195" class="axis"/>
+<text x="1230" y="184" class="header">max_ms</text>
+<line x1="1230" y1="195" x2="1388" y2="195" class="axis"/>
+<text x="1420" y="184" class="header">total_ms</text>
+<line x1="1420" y1="195" x2="1626" y2="195" class="axis"/>
+<line x1="927.00" y1="207.00" x2="927.00" y2="581.00" class="ref-line"/>
+<text x="927.00" y="199.00" text-anchor="middle" class="tick">250</text>
+<line x1="954.00" y1="207.00" x2="954.00" y2="581.00" class="ref-line"/>
+<text x="954.00" y="199.00" text-anchor="middle" class="tick">500</text>
+<line x1="981.00" y1="207.00" x2="981.00" y2="581.00" class="ref-line"/>
+<text x="981.00" y="199.00" text-anchor="middle" class="tick">750</text>
+<line x1="1008.00" y1="207.00" x2="1008.00" y2="581.00" class="ref-line"/>
+<text x="1008.00" y="199.00" text-anchor="middle" class="tick">1000</text>
+<line x1="1072.36" y1="207.00" x2="1072.36" y2="581.00" class="ref-line"/>
+<text x="1072.36" y="199.00" text-anchor="middle" class="tick">1ms</text>
+<line x1="1131.95" y1="207.00" x2="1131.95" y2="581.00" class="ref-line"/>
+<text x="1131.95" y="199.00" text-anchor="middle" class="tick">100ms</text>
+<line x1="1161.74" y1="207.00" x2="1161.74" y2="581.00" class="ref-line"/>
+<text x="1161.74" y="199.00" text-anchor="middle" class="tick">1s</text>
+<line x1="1198.00" y1="207.00" x2="1198.00" y2="581.00" class="ref-line"/>
+<text x="1198.00" y="199.00" text-anchor="middle" class="tick">16.49s</text>
+<line x1="1242.41" y1="207.00" x2="1242.41" y2="581.00" class="ref-line"/>
+<text x="1242.41" y="199.00" text-anchor="middle" class="tick">1ms</text>
+<line x1="1307.77" y1="207.00" x2="1307.77" y2="581.00" class="ref-line"/>
+<text x="1307.77" y="199.00" text-anchor="middle" class="tick">100ms</text>
+<line x1="1340.45" y1="207.00" x2="1340.45" y2="581.00" class="ref-line"/>
+<text x="1340.45" y="199.00" text-anchor="middle" class="tick">1s</text>
+<line x1="1388.00" y1="207.00" x2="1388.00" y2="581.00" class="ref-line"/>
+<text x="1388.00" y="199.00" text-anchor="middle" class="tick">28.51s</text>
+<line x1="1423.53" y1="207.00" x2="1423.53" y2="581.00" class="ref-line"/>
+<text x="1423.53" y="199.00" text-anchor="middle" class="tick">100ms</text>
+<line x1="1503.15" y1="207.00" x2="1503.15" y2="581.00" class="ref-line"/>
+<text x="1503.15" y="199.00" text-anchor="middle" class="tick">10s</text>
+<line x1="1573.94" y1="207.00" x2="1573.94" y2="581.00" class="ref-line"/>
+<text x="1573.94" y="199.00" text-anchor="middle" class="tick">10m</text>
+<line x1="1626.00" y1="207.00" x2="1626.00" y2="581.00" class="ref-line"/>
+<text x="1626.00" y="199.00" text-anchor="middle" class="tick">3.38h</text>
+<g><title>message.handle_group_message.ms: count=739, avg=16.49s, max=28.51s, total=3.38h</title>
+<text x="704" y="222" class="row-label">入口处理</text>
+<rect x="900.00" y="207.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="207.00" width="79.81" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="238" class="small">739</text>
+<rect x="1040.00" y="207.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="207.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="238" class="small">16.49s</text>
+<rect x="1230.00" y="207.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="207.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="238" class="small">28.51s</text>
+<rect x="1420.00" y="207.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="207.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="238" class="small">3.38h</text>
 </g>
-<g><title>message.matcher.ms = 1000</title>
-<rect x="207.40" y="659.00" width="39.20" height="235.00" rx="4" fill="#16a34a"/>
-<text x="227.00" y="671.00" text-anchor="middle" class="value">1000</text>
-<text x="227.00" y="914.00" text-anchor="end" transform="rotate(-35 227.00 914.00)" class="label">matcher</text>
-<text x="227.00" y="928.00" text-anchor="end" transform="rotate(-35 227.00 928.00)" class="metric">message.matcher.ms</text>
+<g><title>message.matcher.ms: count=1000, avg=0.082ms, max=0.417ms, total=81.5ms</title>
+<text x="704" y="273" class="row-label">匹配器</text>
+<rect x="900.00" y="258.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="258.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="289" class="small">1000</text>
+<rect x="1040.00" y="258.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="258.00" width="2.00" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="289" class="small">0.082ms</text>
+<rect x="1230.00" y="258.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="258.00" width="2.00" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="289" class="small">0.417ms</text>
+<rect x="1420.00" y="258.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="258.00" width="2.00" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="289" class="small">81.5ms</text>
 </g>
-<g><title>violation_action.forward.ms = 136</title>
-<rect x="277.40" y="862.04" width="39.20" height="31.96" rx="4" fill="#7c3aed"/>
-<text x="297.00" y="855.04" text-anchor="middle" class="value">136</text>
-<text x="297.00" y="914.00" text-anchor="end" transform="rotate(-35 297.00 914.00)" class="label">forward</text>
-<text x="297.00" y="928.00" text-anchor="end" transform="rotate(-35 297.00 928.00)" class="metric">violation_action.forward.ms</text>
+<g><title>violation_action.forward.ms: count=136, avg=1.62ms, max=2.17ms, total=220.0ms</title>
+<text x="704" y="324" class="row-label">转发</text>
+<rect x="900.00" y="309.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="309.00" width="14.69" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="340" class="small">136</text>
+<rect x="1040.00" y="309.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="309.00" width="38.58" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="340" class="small">1.62ms</text>
+<rect x="1230.00" y="309.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="309.00" width="23.40" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="340" class="small">2.17ms</text>
+<rect x="1420.00" y="309.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="309.00" width="17.16" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="340" class="small">220.0ms</text>
 </g>
-<g><title>violation_action.mute.ms = 68</title>
-<rect x="347.40" y="878.02" width="39.20" height="15.98" rx="4" fill="#ea580c"/>
-<text x="367.00" y="871.02" text-anchor="middle" class="value">68</text>
-<text x="367.00" y="914.00" text-anchor="end" transform="rotate(-35 367.00 914.00)" class="label">mute</text>
-<text x="367.00" y="928.00" text-anchor="end" transform="rotate(-35 367.00 928.00)" class="metric">violation_action.mute.ms</text>
+<g><title>violation_action.mute.ms: count=68, avg=82.8ms, max=5.52s, total=5.63s</title>
+<text x="704" y="375" class="row-label">禁言</text>
+<rect x="900.00" y="360.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="360.00" width="7.34" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="391" class="small">68</text>
+<rect x="1040.00" y="360.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="360.00" width="89.50" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="391" class="small">82.8ms</text>
+<rect x="1230.00" y="360.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="360.00" width="134.71" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="391" class="small">5.52s</text>
+<rect x="1420.00" y="360.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="360.00" width="73.22" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="391" class="small">5.63s</text>
 </g>
-<g><title>violation_action.recall.ms = 68</title>
-<rect x="417.40" y="878.02" width="39.20" height="15.98" rx="4" fill="#db2777"/>
-<text x="437.00" y="871.02" text-anchor="middle" class="value">68</text>
-<text x="437.00" y="914.00" text-anchor="end" transform="rotate(-35 437.00 914.00)" class="label">recall</text>
-<text x="437.00" y="928.00" text-anchor="end" transform="rotate(-35 437.00 928.00)" class="metric">violation_action.recall.ms</text>
+<g><title>violation_action.recall.ms: count=68, avg=1.55ms, max=2.20ms, total=105.5ms</title>
+<text x="704" y="426" class="row-label">撤回</text>
+<rect x="900.00" y="411.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="411.00" width="7.34" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="442" class="small">68</text>
+<rect x="1040.00" y="411.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="411.00" width="38.05" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="442" class="small">1.55ms</text>
+<rect x="1230.00" y="411.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="411.00" width="23.63" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="442" class="small">2.20ms</text>
+<rect x="1420.00" y="411.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="411.00" width="4.46" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="442" class="small">105.5ms</text>
 </g>
-<g><title>violation_action.text_log.ms = 135</title>
-<rect x="487.40" y="862.27" width="39.20" height="31.73" rx="4" fill="#0891b2"/>
-<text x="507.00" y="855.27" text-anchor="middle" class="value">135</text>
-<text x="507.00" y="914.00" text-anchor="end" transform="rotate(-35 507.00 914.00)" class="label">text log</text>
-<text x="507.00" y="928.00" text-anchor="end" transform="rotate(-35 507.00 928.00)" class="metric">violation_action.text_log.ms</text>
+<g><title>violation_action.text_log.ms: count=135, avg=1.61ms, max=2.35ms, total=216.9ms</title>
+<text x="704" y="477" class="row-label">文本日志</text>
+<rect x="900.00" y="462.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="462.00" width="14.58" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="493" class="small">135</text>
+<rect x="1040.00" y="462.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="462.00" width="38.49" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="493" class="small">1.61ms</text>
+<rect x="1230.00" y="462.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="462.00" width="24.51" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="493" class="small">2.35ms</text>
+<rect x="1420.00" y="462.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="462.00" width="16.91" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="493" class="small">216.9ms</text>
 </g>
-<g><title>violation_job.process.ms = 67</title>
-<rect x="557.40" y="878.25" width="39.20" height="15.74" rx="4" fill="#f59e0b"/>
-<text x="577.00" y="871.25" text-anchor="middle" class="value">67</text>
-<text x="577.00" y="914.00" text-anchor="end" transform="rotate(-35 577.00 914.00)" class="label">job process</text>
-<text x="577.00" y="928.00" text-anchor="end" transform="rotate(-35 577.00 928.00)" class="metric">violation_job.process.ms</text>
+<g><title>violation_job.process.ms: count=67, avg=452.3ms, max=6.61s, total=30.30s</title>
+<text x="704" y="528" class="row-label">任务处理</text>
+<rect x="900.00" y="513.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="513.00" width="7.24" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="544" class="small">67</text>
+<rect x="1040.00" y="513.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="513.00" width="111.47" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="544" class="small">452.3ms</text>
+<rect x="1230.00" y="513.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="513.00" width="137.26" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="544" class="small">6.61s</text>
+<rect x="1420.00" y="513.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="513.00" width="102.32" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="544" class="small">30.30s</text>
 </g>
-<g><title>violation_record.ms = 68</title>
-<rect x="627.40" y="878.02" width="39.20" height="15.98" rx="4" fill="#059669"/>
-<text x="647.00" y="871.02" text-anchor="middle" class="value">68</text>
-<text x="647.00" y="914.00" text-anchor="end" transform="rotate(-35 647.00 914.00)" class="label">record</text>
-<text x="647.00" y="928.00" text-anchor="end" transform="rotate(-35 647.00 928.00)" class="metric">violation_record.ms</text>
+<g><title>violation_record.ms: count=68, avg=32.1ms, max=139.7ms, total=2.18s</title>
+<text x="704" y="579" class="row-label">记录写入</text>
+<rect x="900.00" y="564.00" width="108.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="900.00" y="564.00" width="7.34" height="15.00" rx="0.5" ry="0.5" fill="#1d4ed8"/>
+<text x="900" y="595" class="small">68</text>
+<rect x="1040.00" y="564.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1040.00" y="564.00" width="77.25" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1040" y="595" class="small">32.1ms</text>
+<rect x="1230.00" y="564.00" width="158.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1230.00" y="564.00" width="82.52" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlue)"/>
+<text x="1230" y="595" class="small">139.7ms</text>
+<rect x="1420.00" y="564.00" width="206.00" height="15.00" rx="0.5" ry="0.5" fill="#eff6ff"/>
+<rect x="1420.00" y="564.00" width="56.85" height="15.00" rx="0.5" ry="0.5" fill="url(#barBlueSoft)"/>
+<text x="1420" y="595" class="small">2.18s</text>
 </g>
-<rect x="750" y="561" width="650" height="445" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-<text x="772" y="593" class="panel-title">Timings：平均耗时（对数刻度）</text>
-<text x="772" y="617" class="subtitle">匹配器很快；入口平均耗时很高，主要信号在入队等待/队列积压。</text>
-<line x1="816.00" y1="894.00" x2="1376.00" y2="894.00" class="axis"/>
-<line x1="816.00" y1="659.00" x2="816.00" y2="894.00" class="axis"/>
-<line x1="816.00" y1="894.00" x2="1376.00" y2="894.00" class="grid"/>
-<text x="808.00" y="898.00" text-anchor="end" class="tick">0.082ms</text>
-<line x1="816.00" y1="845.87" x2="1376.00" y2="845.87" class="grid"/>
-<text x="808.00" y="849.87" text-anchor="end" class="tick">1.00ms</text>
-<line x1="816.00" y1="757.25" x2="1376.00" y2="757.25" class="grid"/>
-<text x="808.00" y="761.25" text-anchor="end" class="tick">100.0ms</text>
-<line x1="816.00" y1="668.62" x2="1376.00" y2="668.62" class="grid"/>
-<text x="808.00" y="672.62" text-anchor="end" class="tick">10.00s</text>
-<line x1="816.00" y1="659.00" x2="1376.00" y2="659.00" class="grid"/>
-<text x="808.00" y="663.00" text-anchor="end" class="tick">16.49s</text>
-<g><title>message.handle_group_message.ms = 16.49s</title>
-<rect x="831.40" y="659.00" width="39.20" height="235.00" rx="4" fill="#dc2626"/>
-<text x="851.00" y="671.00" text-anchor="middle" class="value">16.49s</text>
-<text x="851.00" y="914.00" text-anchor="end" transform="rotate(-35 851.00 914.00)" class="label">handle</text>
-<text x="851.00" y="928.00" text-anchor="end" transform="rotate(-35 851.00 928.00)" class="metric">message.handle_group_message.ms</text>
-</g>
-<g><title>message.matcher.ms = 0.082ms</title>
-<rect x="901.40" y="893.00" width="39.20" height="1.00" rx="4" fill="#16a34a"/>
-<text x="921.00" y="886.00" text-anchor="middle" class="value">0.082ms</text>
-<text x="921.00" y="914.00" text-anchor="end" transform="rotate(-35 921.00 914.00)" class="label">matcher</text>
-<text x="921.00" y="928.00" text-anchor="end" transform="rotate(-35 921.00 928.00)" class="metric">message.matcher.ms</text>
-</g>
-<g><title>violation_action.forward.ms = 1.62ms</title>
-<rect x="971.40" y="836.62" width="39.20" height="57.38" rx="4" fill="#7c3aed"/>
-<text x="991.00" y="829.62" text-anchor="middle" class="value">1.62ms</text>
-<text x="991.00" y="914.00" text-anchor="end" transform="rotate(-35 991.00 914.00)" class="label">forward</text>
-<text x="991.00" y="928.00" text-anchor="end" transform="rotate(-35 991.00 928.00)" class="metric">violation_action.forward.ms</text>
-</g>
-<g><title>violation_action.mute.ms = 82.8ms</title>
-<rect x="1041.40" y="760.88" width="39.20" height="133.12" rx="4" fill="#ea580c"/>
-<text x="1061.00" y="753.88" text-anchor="middle" class="value">82.8ms</text>
-<text x="1061.00" y="914.00" text-anchor="end" transform="rotate(-35 1061.00 914.00)" class="label">mute</text>
-<text x="1061.00" y="928.00" text-anchor="end" transform="rotate(-35 1061.00 928.00)" class="metric">violation_action.mute.ms</text>
-</g>
-<g><title>violation_action.recall.ms = 1.55ms</title>
-<rect x="1111.40" y="837.41" width="39.20" height="56.59" rx="4" fill="#db2777"/>
-<text x="1131.00" y="830.41" text-anchor="middle" class="value">1.55ms</text>
-<text x="1131.00" y="914.00" text-anchor="end" transform="rotate(-35 1131.00 914.00)" class="label">recall</text>
-<text x="1131.00" y="928.00" text-anchor="end" transform="rotate(-35 1131.00 928.00)" class="metric">violation_action.recall.ms</text>
-</g>
-<g><title>violation_action.text_log.ms = 1.61ms</title>
-<rect x="1181.40" y="836.75" width="39.20" height="57.25" rx="4" fill="#0891b2"/>
-<text x="1201.00" y="829.75" text-anchor="middle" class="value">1.61ms</text>
-<text x="1201.00" y="914.00" text-anchor="end" transform="rotate(-35 1201.00 914.00)" class="label">text log</text>
-<text x="1201.00" y="928.00" text-anchor="end" transform="rotate(-35 1201.00 928.00)" class="metric">violation_action.text_log.ms</text>
-</g>
-<g><title>violation_job.process.ms = 452.3ms</title>
-<rect x="1251.40" y="728.20" width="39.20" height="165.80" rx="4" fill="#f59e0b"/>
-<text x="1271.00" y="721.20" text-anchor="middle" class="value">452.3ms</text>
-<text x="1271.00" y="914.00" text-anchor="end" transform="rotate(-35 1271.00 914.00)" class="label">job process</text>
-<text x="1271.00" y="928.00" text-anchor="end" transform="rotate(-35 1271.00 928.00)" class="metric">violation_job.process.ms</text>
-</g>
-<g><title>violation_record.ms = 32.1ms</title>
-<rect x="1321.40" y="779.10" width="39.20" height="114.90" rx="4" fill="#059669"/>
-<text x="1341.00" y="772.10" text-anchor="middle" class="value">32.1ms</text>
-<text x="1341.00" y="914.00" text-anchor="end" transform="rotate(-35 1341.00 914.00)" class="label">record</text>
-<text x="1341.00" y="928.00" text-anchor="end" transform="rotate(-35 1341.00 928.00)" class="metric">violation_record.ms</text>
-</g>
-<rect x="56" y="1050" width="650" height="445" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-<text x="78" y="1082" class="panel-title">Timings：最大耗时（对数刻度）</text>
-<text x="78" y="1106" class="subtitle">入口最大耗时接近 28.51s；禁言和 job process 存在秒级尖峰。</text>
-<line x1="122.00" y1="1383.00" x2="682.00" y2="1383.00" class="axis"/>
-<line x1="122.00" y1="1148.00" x2="122.00" y2="1383.00" class="axis"/>
-<line x1="122.00" y1="1383.00" x2="682.00" y2="1383.00" class="grid"/>
-<text x="114.00" y="1387.00" text-anchor="end" class="tick">0.417ms</text>
-<line x1="122.00" y1="1364.54" x2="682.00" y2="1364.54" class="grid"/>
-<text x="114.00" y="1368.54" text-anchor="end" class="tick">1.00ms</text>
-<line x1="122.00" y1="1315.93" x2="682.00" y2="1315.93" class="grid"/>
-<text x="114.00" y="1319.93" text-anchor="end" class="tick">10.0ms</text>
-<line x1="122.00" y1="1267.32" x2="682.00" y2="1267.32" class="grid"/>
-<text x="114.00" y="1271.32" text-anchor="end" class="tick">100.0ms</text>
-<line x1="122.00" y1="1218.72" x2="682.00" y2="1218.72" class="grid"/>
-<text x="114.00" y="1222.72" text-anchor="end" class="tick">1.00s</text>
-<line x1="122.00" y1="1170.11" x2="682.00" y2="1170.11" class="grid"/>
-<text x="114.00" y="1174.11" text-anchor="end" class="tick">10.00s</text>
-<line x1="122.00" y1="1148.00" x2="682.00" y2="1148.00" class="grid"/>
-<text x="114.00" y="1152.00" text-anchor="end" class="tick">28.51s</text>
-<g><title>message.handle_group_message.ms = 28.51s</title>
-<rect x="137.40" y="1148.00" width="39.20" height="235.00" rx="4" fill="#dc2626"/>
-<text x="157.00" y="1160.00" text-anchor="middle" class="value">28.51s</text>
-<text x="157.00" y="1403.00" text-anchor="end" transform="rotate(-35 157.00 1403.00)" class="label">handle</text>
-<text x="157.00" y="1417.00" text-anchor="end" transform="rotate(-35 157.00 1417.00)" class="metric">message.handle_group_message.ms</text>
-</g>
-<g><title>message.matcher.ms = 0.417ms</title>
-<rect x="207.40" y="1382.00" width="39.20" height="1.00" rx="4" fill="#16a34a"/>
-<text x="227.00" y="1375.00" text-anchor="middle" class="value">0.417ms</text>
-<text x="227.00" y="1403.00" text-anchor="end" transform="rotate(-35 227.00 1403.00)" class="label">matcher</text>
-<text x="227.00" y="1417.00" text-anchor="end" transform="rotate(-35 227.00 1417.00)" class="metric">message.matcher.ms</text>
-</g>
-<g><title>violation_action.forward.ms = 2.17ms</title>
-<rect x="277.40" y="1348.19" width="39.20" height="34.81" rx="4" fill="#7c3aed"/>
-<text x="297.00" y="1341.19" text-anchor="middle" class="value">2.17ms</text>
-<text x="297.00" y="1403.00" text-anchor="end" transform="rotate(-35 297.00 1403.00)" class="label">forward</text>
-<text x="297.00" y="1417.00" text-anchor="end" transform="rotate(-35 297.00 1417.00)" class="metric">violation_action.forward.ms</text>
-</g>
-<g><title>violation_action.mute.ms = 5.52s</title>
-<rect x="347.40" y="1182.65" width="39.20" height="200.35" rx="4" fill="#ea580c"/>
-<text x="367.00" y="1175.65" text-anchor="middle" class="value">5.52s</text>
-<text x="367.00" y="1403.00" text-anchor="end" transform="rotate(-35 367.00 1403.00)" class="label">mute</text>
-<text x="367.00" y="1417.00" text-anchor="end" transform="rotate(-35 367.00 1417.00)" class="metric">violation_action.mute.ms</text>
-</g>
-<g><title>violation_action.recall.ms = 2.20ms</title>
-<rect x="417.40" y="1347.85" width="39.20" height="35.15" rx="4" fill="#db2777"/>
-<text x="437.00" y="1340.85" text-anchor="middle" class="value">2.20ms</text>
-<text x="437.00" y="1403.00" text-anchor="end" transform="rotate(-35 437.00 1403.00)" class="label">recall</text>
-<text x="437.00" y="1417.00" text-anchor="end" transform="rotate(-35 437.00 1417.00)" class="metric">violation_action.recall.ms</text>
-</g>
-<g><title>violation_action.text_log.ms = 2.35ms</title>
-<rect x="487.40" y="1346.55" width="39.20" height="36.45" rx="4" fill="#0891b2"/>
-<text x="507.00" y="1339.55" text-anchor="middle" class="value">2.35ms</text>
-<text x="507.00" y="1403.00" text-anchor="end" transform="rotate(-35 507.00 1403.00)" class="label">text log</text>
-<text x="507.00" y="1417.00" text-anchor="end" transform="rotate(-35 507.00 1417.00)" class="metric">violation_action.text_log.ms</text>
-</g>
-<g><title>violation_job.process.ms = 6.61s</title>
-<rect x="557.40" y="1178.85" width="39.20" height="204.15" rx="4" fill="#f59e0b"/>
-<text x="577.00" y="1171.85" text-anchor="middle" class="value">6.61s</text>
-<text x="577.00" y="1403.00" text-anchor="end" transform="rotate(-35 577.00 1403.00)" class="label">job process</text>
-<text x="577.00" y="1417.00" text-anchor="end" transform="rotate(-35 577.00 1417.00)" class="metric">violation_job.process.ms</text>
-</g>
-<g><title>violation_record.ms = 139.7ms</title>
-<rect x="627.40" y="1260.26" width="39.20" height="122.74" rx="4" fill="#059669"/>
-<text x="647.00" y="1253.26" text-anchor="middle" class="value">139.7ms</text>
-<text x="647.00" y="1403.00" text-anchor="end" transform="rotate(-35 647.00 1403.00)" class="label">record</text>
-<text x="647.00" y="1417.00" text-anchor="end" transform="rotate(-35 647.00 1417.00)" class="metric">violation_record.ms</text>
-</g>
-<rect x="750" y="1050" width="650" height="445" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
-<text x="772" y="1082" class="panel-title">Timings：累计耗时（对数刻度）</text>
-<text x="772" y="1106" class="subtitle">total_ms 是所有样本耗时之和，不等同墙钟压测总时长；用于判断耗时贡献。</text>
-<line x1="816.00" y1="1383.00" x2="1376.00" y2="1383.00" class="axis"/>
-<line x1="816.00" y1="1148.00" x2="816.00" y2="1383.00" class="axis"/>
-<line x1="816.00" y1="1383.00" x2="1376.00" y2="1383.00" class="grid"/>
-<text x="808.00" y="1387.00" text-anchor="end" class="tick">81.5ms</text>
-<line x1="816.00" y1="1333.56" x2="1376.00" y2="1333.56" class="grid"/>
-<text x="808.00" y="1337.56" text-anchor="end" class="tick">1.00s</text>
-<line x1="816.00" y1="1242.73" x2="1376.00" y2="1242.73" class="grid"/>
-<text x="808.00" y="1246.73" text-anchor="end" class="tick">1.67m</text>
-<line x1="816.00" y1="1151.90" x2="1376.00" y2="1151.90" class="grid"/>
-<text x="808.00" y="1155.90" text-anchor="end" class="tick">2.78h</text>
-<line x1="816.00" y1="1148.00" x2="1376.00" y2="1148.00" class="grid"/>
-<text x="808.00" y="1152.00" text-anchor="end" class="tick">3.38h</text>
-<g><title>message.handle_group_message.ms = 3.38h</title>
-<rect x="831.40" y="1148.00" width="39.20" height="235.00" rx="4" fill="#dc2626"/>
-<text x="851.00" y="1160.00" text-anchor="middle" class="value">3.38h</text>
-<text x="851.00" y="1403.00" text-anchor="end" transform="rotate(-35 851.00 1403.00)" class="label">handle</text>
-<text x="851.00" y="1417.00" text-anchor="end" transform="rotate(-35 851.00 1417.00)" class="metric">message.handle_group_message.ms</text>
-</g>
-<g><title>message.matcher.ms = 81.5ms</title>
-<rect x="901.40" y="1382.00" width="39.20" height="1.00" rx="4" fill="#16a34a"/>
-<text x="921.00" y="1375.00" text-anchor="middle" class="value">81.5ms</text>
-<text x="921.00" y="1403.00" text-anchor="end" transform="rotate(-35 921.00 1403.00)" class="label">matcher</text>
-<text x="921.00" y="1417.00" text-anchor="end" transform="rotate(-35 921.00 1417.00)" class="metric">message.matcher.ms</text>
-</g>
-<g><title>violation_action.forward.ms = 220.0ms</title>
-<rect x="971.40" y="1363.43" width="39.20" height="19.57" rx="4" fill="#7c3aed"/>
-<text x="991.00" y="1356.43" text-anchor="middle" class="value">220.0ms</text>
-<text x="991.00" y="1403.00" text-anchor="end" transform="rotate(-35 991.00 1403.00)" class="label">forward</text>
-<text x="991.00" y="1417.00" text-anchor="end" transform="rotate(-35 991.00 1417.00)" class="metric">violation_action.forward.ms</text>
-</g>
-<g><title>violation_action.mute.ms = 5.63s</title>
-<rect x="1041.40" y="1299.48" width="39.20" height="83.52" rx="4" fill="#ea580c"/>
-<text x="1061.00" y="1292.48" text-anchor="middle" class="value">5.63s</text>
-<text x="1061.00" y="1403.00" text-anchor="end" transform="rotate(-35 1061.00 1403.00)" class="label">mute</text>
-<text x="1061.00" y="1417.00" text-anchor="end" transform="rotate(-35 1061.00 1417.00)" class="metric">violation_action.mute.ms</text>
-</g>
-<g><title>violation_action.recall.ms = 105.5ms</title>
-<rect x="1111.40" y="1377.92" width="39.20" height="5.08" rx="4" fill="#db2777"/>
-<text x="1131.00" y="1370.92" text-anchor="middle" class="value">105.5ms</text>
-<text x="1131.00" y="1403.00" text-anchor="end" transform="rotate(-35 1131.00 1403.00)" class="label">recall</text>
-<text x="1131.00" y="1417.00" text-anchor="end" transform="rotate(-35 1131.00 1417.00)" class="metric">violation_action.recall.ms</text>
-</g>
-<g><title>violation_action.text_log.ms = 216.9ms</title>
-<rect x="1181.40" y="1363.71" width="39.20" height="19.29" rx="4" fill="#0891b2"/>
-<text x="1201.00" y="1356.71" text-anchor="middle" class="value">216.9ms</text>
-<text x="1201.00" y="1403.00" text-anchor="end" transform="rotate(-35 1201.00 1403.00)" class="label">text log</text>
-<text x="1201.00" y="1417.00" text-anchor="end" transform="rotate(-35 1201.00 1417.00)" class="metric">violation_action.text_log.ms</text>
-</g>
-<g><title>violation_job.process.ms = 30.30s</title>
-<rect x="1251.40" y="1266.28" width="39.20" height="116.72" rx="4" fill="#f59e0b"/>
-<text x="1271.00" y="1259.28" text-anchor="middle" class="value">30.30s</text>
-<text x="1271.00" y="1403.00" text-anchor="end" transform="rotate(-35 1271.00 1403.00)" class="label">job process</text>
-<text x="1271.00" y="1417.00" text-anchor="end" transform="rotate(-35 1271.00 1417.00)" class="metric">violation_job.process.ms</text>
-</g>
-<g><title>violation_record.ms = 2.18s</title>
-<rect x="1321.40" y="1318.15" width="39.20" height="64.85" rx="4" fill="#059669"/>
-<text x="1341.00" y="1311.15" text-anchor="middle" class="value">2.18s</text>
-<text x="1341.00" y="1403.00" text-anchor="end" transform="rotate(-35 1341.00 1403.00)" class="label">record</text>
-<text x="1341.00" y="1417.00" text-anchor="end" transform="rotate(-35 1341.00 1417.00)" class="metric">violation_record.ms</text>
-</g>
-<text x="56" y="1603" class="page-subtitle">注：本图为运行中快照可视化，不代表队列排空后的最终性能基准。</text>
+<rect x="40" y="680" width="1720" height="170" rx="0.5" fill="#f8fbff" stroke="#bfdbfe" filter="url(#softShadow)"/>
+<rect x="40" y="680" width="1720" height="4" rx="0.5" fill="#2563eb"/>
+<text x="64" y="714" class="issue-title">延迟问题清单</text>
+<rect x="64" y="732" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="74" y="743" width="42" height="20" rx="0.5" fill="#1e40af"/>
+<text x="95" y="757" text-anchor="middle" class="issue-label">严重</text>
+<text x="126" y="751" class="issue-name">入口处理</text>
+<text x="126" y="768" class="issue-text">avg 16.49s / max 28.51s，等待 outbox 入队拖慢入口。</text>
+<rect x="492" y="732" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="502" y="743" width="42" height="20" rx="0.5" fill="#2563eb"/>
+<text x="523" y="757" text-anchor="middle" class="issue-label">正常</text>
+<text x="554" y="751" class="issue-name">匹配器</text>
+<text x="554" y="768" class="issue-text">avg 0.082ms，规则匹配不是瓶颈。</text>
+<rect x="920" y="732" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="930" y="743" width="42" height="20" rx="0.5" fill="#3b82f6"/>
+<text x="951" y="757" text-anchor="middle" class="issue-label">正常</text>
+<text x="982" y="751" class="issue-name">转发</text>
+<text x="982" y="768" class="issue-text">avg 1.62ms，延迟正常；success 语义需拆分。</text>
+<rect x="1348" y="732" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="1358" y="743" width="42" height="20" rx="0.5" fill="#0369a1"/>
+<text x="1379" y="757" text-anchor="middle" class="issue-label">尖峰</text>
+<text x="1410" y="751" class="issue-name">禁言</text>
+<text x="1410" y="768" class="issue-text">max 5.52s，存在平台动作尖峰，继续观察 API/权限响应。</text>
+<rect x="64" y="792" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="74" y="803" width="42" height="20" rx="0.5" fill="#60a5fa"/>
+<text x="95" y="817" text-anchor="middle" class="issue-label">正常</text>
+<text x="126" y="811" class="issue-name">撤回</text>
+<text x="126" y="828" class="issue-text">avg 1.55ms，暂未暴露延迟瓶颈。</text>
+<rect x="492" y="792" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="502" y="803" width="42" height="20" rx="0.5" fill="#60a5fa"/>
+<text x="523" y="817" text-anchor="middle" class="issue-label">正常</text>
+<text x="554" y="811" class="issue-name">文本日志</text>
+<text x="554" y="828" class="issue-text">avg 1.61ms，暂未暴露延迟瓶颈。</text>
+<rect x="920" y="792" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="930" y="803" width="42" height="20" rx="0.5" fill="#0284c7"/>
+<text x="951" y="817" text-anchor="middle" class="issue-label">尖峰</text>
+<text x="982" y="811" class="issue-name">任务处理</text>
+<text x="982" y="828" class="issue-text">avg 452.3ms / max 6.61s，worker 尖峰影响队列排空。</text>
+<rect x="1348" y="792" width="410" height="46" rx="0.5" fill="#ffffff" stroke="#dbeafe"/>
+<rect x="1358" y="803" width="42" height="20" rx="0.5" fill="#0ea5e9"/>
+<text x="1379" y="817" text-anchor="middle" class="issue-label">可接受</text>
+<text x="1410" y="811" class="issue-name">记录写入</text>
+<text x="1410" y="828" class="issue-text">avg 32.1ms / max 139.7ms，会叠加入队压力。</text>
+<text x="40" y="886" class="note">注：这是压测过程中的运行中快照，用于诊断，不代表队列排空后的最终性能基准。虚线为贯穿到最底部柱子的对比基准，蓝色条形越长表示该列归一化后的相对值越高。</text>
 </svg>
