@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import shutil
 import sys
+import time
 import unittest
-import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -109,7 +109,7 @@ def _repository(root: str) -> ChatFilterRepository:
 
 @contextmanager
 def _temporary_directory() -> Iterator[str]:
-    root = PACKAGE_DIR / f".action-policy-test-{uuid.uuid4().hex}"
+    root = PACKAGE_DIR / f".action-policy-test-{time.time_ns()}"
     root.mkdir()
     try:
         yield str(root)

@@ -4,8 +4,8 @@ import json
 import sqlite3
 import shutil
 import sys
+import time
 import unittest
-import uuid
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -248,7 +248,7 @@ def _connect(database_path: Path) -> Iterator[sqlite3.Connection]:
 
 @contextmanager
 def _temporary_directory() -> Iterator[str]:
-    root = PACKAGE_DIR / f".schema-test-{uuid.uuid4().hex}"
+    root = PACKAGE_DIR / f".schema-test-{time.time_ns()}"
     root.mkdir()
     try:
         yield str(root)

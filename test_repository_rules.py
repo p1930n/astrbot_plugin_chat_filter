@@ -3,8 +3,8 @@ from __future__ import annotations
 import shutil
 import sqlite3
 import sys
+import time
 import unittest
-import uuid
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -156,7 +156,7 @@ def _connect(database_path: Path) -> Iterator[sqlite3.Connection]:
 
 @contextmanager
 def _temporary_directory() -> Iterator[str]:
-    root = PACKAGE_DIR / f".rules-test-{uuid.uuid4().hex}"
+    root = PACKAGE_DIR / f".rules-test-{time.time_ns()}"
     root.mkdir()
     try:
         yield str(root)
