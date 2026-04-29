@@ -109,7 +109,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 
 以下图表来自一次 1000 个入口事件的运行中 metrics 快照，覆盖 counters、timing 样本数、平均耗时、最大耗时和累计耗时。耗时类图表使用对数刻度，避免低毫秒指标在图中不可见。
 
-![Chat Filter 完整 Metrics 快照柱状图](devlogs/phase-07/chat-filter-metrics-bars.svg)
+![Chat Filter 完整 Metrics 快照柱状图](devlogs/phase-07/chat-filter-metrics-blue.svg)
 
 ### 读图结论
 
