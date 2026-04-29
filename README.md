@@ -18,7 +18,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 
 ## 指令
 
-以下示例使用 `.cf`。全局和群策略命令也提供 `/chatfilter` 入口，例如 `/chatfilter status`、`/chatfilter group status`。
+以下示例使用 `.cf`。插件仅保留 `cf` 命令入口，避免重复前缀注册到同一批功能。
 
 | 指令 | 说明 |
 | --- | --- |
@@ -49,13 +49,11 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf file-probe [群号]` | 向指定群或当前群发送文件探针。 |
 | `.cf report-dry-run [群号] [天数]` | 生成指定群命中历史 TSV 报表；未传群号时使用当前群。 |
 
-管理员豁免动作也支持 `/chatfilter group admin-exempt status|enable|disable` 和 `/chatfilter group exempt status|enable|disable`。
-
 ## 权限
 
 - 默认情况下，命令允许 AstrBot 管理员、QQ群主或 QQ 群管理员使用。
-- `.cf enable`、`.cf group enable`、`/chatfilter enable` 和 `/chatfilter group enable` 更严格，只允许 AstrBot 管理员使用。
-- `.cf disable [群号]` 和 `/chatfilter disable [群号]` 指定群号时只允许 AstrBot 管理员使用；不指定群号时仍允许当前群的群主或管理员使用。
+- `.cf enable` 和 `.cf group enable` 更严格，只允许 AstrBot 管理员使用。
+- `.cf disable [群号]` 指定群号时只允许 AstrBot 管理员使用；不指定群号时仍允许当前群的群主或管理员使用。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。
 
 ## 配置

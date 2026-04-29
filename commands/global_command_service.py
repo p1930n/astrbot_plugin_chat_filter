@@ -28,7 +28,6 @@ class GlobalCommandService:
             ".cf enable [group id]; .cf disable [group id]; "
             ".cf group status|enable|disable|add|remove|list; "
             ".cf group admin-exempt status|enable|disable (alias: exempt); "
-            "/chatfilter group admin-exempt status|enable|disable; "
             ".cf bind; .cf mute; .cf mute-stack; "
             ".cf probe; .cf forward-probe; .cf report-dry-run; .cf file-probe."
         )

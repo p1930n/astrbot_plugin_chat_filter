@@ -153,19 +153,6 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
             ("cf_group_list", "group_list", ()),
             ("cf_group_admin_exempt", "group_admin_exempt", ("off",)),
             ("cf_group_exempt", "group_admin_exempt", ("on",)),
-            ("chatfilter_help", "help", ()),
-            ("chatfilter_status", "status", ()),
-            ("chatfilter_overview", "overview", ("csv",)),
-            ("chatfilter_enable", "enable", ("group-1",)),
-            ("chatfilter_disable", "disable", ("group-1",)),
-            ("chatfilter_group_status", "group_status", ()),
-            ("chatfilter_group_enable", "group_enable", ()),
-            ("chatfilter_group_disable", "group_disable", ()),
-            ("chatfilter_group_add", "group_add", ("word",)),
-            ("chatfilter_group_remove", "group_remove", ("word",)),
-            ("chatfilter_group_list", "group_list", ()),
-            ("chatfilter_group_admin_exempt", "group_admin_exempt", ("off",)),
-            ("chatfilter_group_exempt", "group_admin_exempt", ("on",)),
         )
 
         for handler_name, gateway_method, args in cases:
@@ -184,7 +171,6 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
     def test_overview_entries_allow_empty_output_format(self) -> None:
         cases = (
             ("cf_overview", "overview"),
-            ("chatfilter_overview", "overview"),
         )
 
         for handler_name, gateway_method in cases:

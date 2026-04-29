@@ -10,14 +10,10 @@ from ..services.report_service import ViolationReportService
 
 
 GROUP_ADMIN_EXEMPT_USAGE = (
-    "Usage: .cf group admin-exempt status|enable|disable "
-    "or /chatfilter group admin-exempt status|enable|disable "
-    "(alias: exempt)"
+    "Usage: .cf group admin-exempt status|enable|disable (alias: exempt)"
 )
-GROUP_ENABLE_USAGE = "Usage: .cf enable [group id] or /chatfilter enable [group id]"
-GROUP_DISABLE_USAGE = (
-    "Usage: .cf disable [group id] or /chatfilter disable [group id]"
-)
+GROUP_ENABLE_USAGE = "Usage: .cf enable [group id]"
+GROUP_DISABLE_USAGE = "Usage: .cf disable [group id]"
 TARGET_GROUP_PERMISSION_DENIED = (
     "Chat Filter target group permission denied: "
     "requires AstrBot admin permission."

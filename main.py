@@ -17,7 +17,7 @@ from .platform.platform_actions import PlatformActions
 from .runtime.plugin_runtime import build_chat_filter_runtime
 
 
-COMMAND_PREFIXES = ("/chatfilter", "/cf", ".cf")
+COMMAND_PREFIXES = ("/cf", ".cf")
 
 __all__ = (
     "COMMAND_PERMISSION_DENIED",
@@ -74,10 +74,6 @@ class ChatFilterPlugin(Star):
         )
         if result.stop_event:
             event.stop_event()
-
-    @filter.command_group("chatfilter")
-    def chatfilter():
-        pass
 
     @filter.command_group("cf")
     def cf():
@@ -207,74 +203,6 @@ class ChatFilterPlugin(Star):
 
     @cf_group.command("exempt")
     async def cf_group_exempt(
-        self,
-        event: AstrMessageEvent,
-        action: str = "status",
-    ):
-        yield await self._command_gateway.group_admin_exempt(event, action)
-
-    @chatfilter.command("help")
-    async def chatfilter_help(self, event: AstrMessageEvent):
-        yield await self._command_gateway.help(event)
-
-    @chatfilter.command("status")
-    async def chatfilter_status(self, event: AstrMessageEvent):
-        yield await self._command_gateway.status(event)
-
-    @chatfilter.command("overview")
-    async def chatfilter_overview(
-        self,
-        event: AstrMessageEvent,
-        output_format: str = "",
-    ):
-        yield await self._command_gateway.overview(event, output_format)
-
-    @chatfilter.command("enable")
-    async def chatfilter_enable(self, event: AstrMessageEvent, group_id: str = ""):
-        yield await self._command_gateway.enable(event, group_id)
-
-    @chatfilter.command("disable")
-    async def chatfilter_disable(self, event: AstrMessageEvent, group_id: str = ""):
-        yield await self._command_gateway.disable(event, group_id)
-
-    @chatfilter.group("group")
-    def chatfilter_group():
-        pass
-
-    @chatfilter_group.command("status")
-    async def chatfilter_group_status(self, event: AstrMessageEvent):
-        yield await self._command_gateway.group_status(event)
-
-    @chatfilter_group.command("enable")
-    async def chatfilter_group_enable(self, event: AstrMessageEvent):
-        yield await self._command_gateway.group_enable(event)
-
-    @chatfilter_group.command("disable")
-    async def chatfilter_group_disable(self, event: AstrMessageEvent):
-        yield await self._command_gateway.group_disable(event)
-
-    @chatfilter_group.command("add")
-    async def chatfilter_group_add(self, event: AstrMessageEvent, word: str):
-        yield await self._command_gateway.group_add(event, word)
-
-    @chatfilter_group.command("remove")
-    async def chatfilter_group_remove(self, event: AstrMessageEvent, word: str):
-        yield await self._command_gateway.group_remove(event, word)
-
-    @chatfilter_group.command("list")
-    async def chatfilter_group_list(self, event: AstrMessageEvent):
-        yield await self._command_gateway.group_list(event)
-
-    @chatfilter_group.command("admin-exempt")
-    async def chatfilter_group_admin_exempt(
-        self,
-        event: AstrMessageEvent,
-        action: str = "status",
-    ):
-        yield await self._command_gateway.group_admin_exempt(event, action)
-
-    @chatfilter_group.command("exempt")
-    async def chatfilter_group_exempt(
         self,
         event: AstrMessageEvent,
         action: str = "status",
