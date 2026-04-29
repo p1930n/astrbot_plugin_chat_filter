@@ -8,6 +8,7 @@ from ..services.file_probe_service import FileProbeService
 from ..domain.models import PlatformEventSnapshot
 from ..platform.platform_actions import PlatformActions, format_platform_probe
 from ..services.report_service import ViolationReportService
+from ..runtime.metrics import ChatFilterMetrics
 
 
 GROUP_ADMIN_EXEMPT_USAGE = (
@@ -32,11 +33,13 @@ class CommandController:
         report_service: ViolationReportService | None,
         file_probe_service: FileProbeService | None,
         authorizer: CommandAuthorizer,
+        metrics: ChatFilterMetrics | None = None,
     ) -> None:
         self._command_service = command_service
         self._report_service = report_service
         self._file_probe_service = file_probe_service
         self._authorizer = authorizer
+        self._metrics = metrics
 
     def command_denial(
         self,
@@ -222,6 +225,13 @@ class CommandController:
         if not self.check_global_permission(snapshot):
             return GLOBAL_DIAGNOSTICS_PERMISSION_DENIED
         return self._command_service.format_regex_skips(limit)
+
+    async def metrics(self, snapshot: PlatformEventSnapshot) -> str:
+        if not self.check_global_permission(snapshot):
+            return GLOBAL_DIAGNOSTICS_PERMISSION_DENIED
+        if self._metrics is None:
+            return "Chat Filter metrics:\nunavailable"
+        return self._metrics.format_snapshot()
 
     async def action_status(
         self,

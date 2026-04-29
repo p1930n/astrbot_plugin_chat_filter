@@ -67,6 +67,7 @@ from astrbot_plugin_chat_filter.domain.models import PlatformEventSnapshot  # no
 from astrbot_plugin_chat_filter.platform.command_gateway import (  # noqa: E402
     CommandGateway,
 )
+from astrbot_plugin_chat_filter.runtime.metrics import ChatFilterMetrics  # noqa: E402
 
 
 class CommandControllerAdminExemptTests(unittest.TestCase):
@@ -227,6 +228,29 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
         self.assertEqual(result, "regex-skips:5")
         self.assertEqual(service.regex_skip_calls, ["5"])
 
+    def test_metrics_requires_global_admin(self) -> None:
+        controller = _controller(service=_CommandService())
+
+        result = _run(controller.metrics(_snapshot(sender_role="admin")))
+
+        self.assertEqual(result, GLOBAL_DIAGNOSTICS_PERMISSION_DENIED)
+
+    def test_metrics_formats_aggregate_snapshot_for_global_admin(self) -> None:
+        metrics = ChatFilterMetrics()
+        metrics.increment("message.matched.total")
+        metrics.observe_ms("message.matcher.ms", 2.5)
+        controller = _controller(
+            service=_CommandService(),
+            admins=("200",),
+            metrics=metrics,
+        )
+
+        result = _run(controller.metrics(_snapshot(sender_role="member")))
+
+        self.assertIn("Chat Filter metrics:", result)
+        self.assertIn("message.matched.total: 1", result)
+        self.assertIn("message.matcher.ms", result)
+
     def test_action_status_allows_current_group_manager(self) -> None:
         service = _CommandService()
         controller = _controller(service=service)
@@ -338,6 +362,17 @@ class CommandGatewayAdminExemptTests(unittest.TestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(len(controller.snapshots), 1)
 
+    def test_gateway_passes_metrics_to_controller(self) -> None:
+        controller = _GatewayController()
+        gateway = CommandGateway(controller, _PlatformActionFactory())
+        event = _Event(sender_id="200", sender_role="admin")
+
+        result = _run(gateway.metrics(event))
+
+        self.assertEqual(result, "metrics:200:admin")
+        self.assertTrue(event.stopped)
+        self.assertEqual(len(controller.snapshots), 1)
+
     def test_gateway_passes_action_commands_to_controller(self) -> None:
         controller = _GatewayController()
         gateway = CommandGateway(controller, _PlatformActionFactory())
@@ -359,12 +394,14 @@ def _controller(
     *,
     service: "_CommandService",
     admins: tuple[str, ...] = (),
+    metrics: ChatFilterMetrics | None = None,
 ) -> CommandController:
     return CommandController(
         command_service=service,  # type: ignore[arg-type]
         report_service=None,
         file_probe_service=None,
         authorizer=CommandAuthorizer(lambda: {"admins_id": admins}),
+        metrics=metrics,
     )
 
 
@@ -499,6 +536,10 @@ class _GatewayController:
     ) -> str:
         self.snapshots.append(snapshot)
         return f"regex-skips:{limit}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def metrics(self, snapshot: PlatformEventSnapshot) -> str:
+        self.snapshots.append(snapshot)
+        return f"metrics:{snapshot.sender_id}:{snapshot.sender_role}"
 
     async def action_status(
         self,

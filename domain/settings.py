@@ -20,6 +20,18 @@ MAX_MUTE_ESCALATION_MULTIPLIER = 10
 MIN_MUTE_ESCALATION_RESET_SECONDS = 60
 MAX_MUTE_ESCALATION_RESET_SECONDS = 2_592_000
 DEFAULT_REPORT_DAYS = 7
+DEFAULT_VIOLATION_OUTBOX_MAX_PENDING = 5000
+DEFAULT_VIOLATION_OUTBOX_WORKER_COUNT = 1
+DEFAULT_VIOLATION_OUTBOX_MAX_ATTEMPTS = 3
+DEFAULT_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND = 20
+MIN_VIOLATION_OUTBOX_MAX_PENDING = 100
+MAX_VIOLATION_OUTBOX_MAX_PENDING = 100_000
+MIN_VIOLATION_OUTBOX_WORKER_COUNT = 1
+MAX_VIOLATION_OUTBOX_WORKER_COUNT = 8
+MIN_VIOLATION_OUTBOX_MAX_ATTEMPTS = 1
+MAX_VIOLATION_OUTBOX_MAX_ATTEMPTS = 10
+MIN_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND = 1
+MAX_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND = 1000
 DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED = True
 DEFAULT_OBFUSCATED_WORD_MAX_GAP = 4
 MAX_OBFUSCATED_WORD_MAX_GAP = 64
@@ -74,6 +86,12 @@ class ChatFilterSettings:
     mute_escalation_multiplier: int = DEFAULT_MUTE_ESCALATION_MULTIPLIER
     mute_escalation_reset_seconds: int = DEFAULT_MUTE_ESCALATION_RESET_SECONDS
     default_report_days: int = DEFAULT_REPORT_DAYS
+    violation_outbox_max_pending: int = DEFAULT_VIOLATION_OUTBOX_MAX_PENDING
+    violation_outbox_worker_count: int = DEFAULT_VIOLATION_OUTBOX_WORKER_COUNT
+    violation_outbox_max_attempts: int = DEFAULT_VIOLATION_OUTBOX_MAX_ATTEMPTS
+    violation_outbox_rate_limit_per_second: int = (
+        DEFAULT_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND
+    )
     obfuscated_word_matching_enabled: bool = (
         DEFAULT_OBFUSCATED_WORD_MATCHING_ENABLED
     )
@@ -134,6 +152,30 @@ class ChatFilterSettings:
                 default=DEFAULT_REPORT_DAYS,
                 minimum=1,
                 maximum=366,
+            ),
+            violation_outbox_max_pending=_bounded_int(
+                data.get("violation_outbox_max_pending"),
+                default=DEFAULT_VIOLATION_OUTBOX_MAX_PENDING,
+                minimum=MIN_VIOLATION_OUTBOX_MAX_PENDING,
+                maximum=MAX_VIOLATION_OUTBOX_MAX_PENDING,
+            ),
+            violation_outbox_worker_count=_bounded_int(
+                data.get("violation_outbox_worker_count"),
+                default=DEFAULT_VIOLATION_OUTBOX_WORKER_COUNT,
+                minimum=MIN_VIOLATION_OUTBOX_WORKER_COUNT,
+                maximum=MAX_VIOLATION_OUTBOX_WORKER_COUNT,
+            ),
+            violation_outbox_max_attempts=_bounded_int(
+                data.get("violation_outbox_max_attempts"),
+                default=DEFAULT_VIOLATION_OUTBOX_MAX_ATTEMPTS,
+                minimum=MIN_VIOLATION_OUTBOX_MAX_ATTEMPTS,
+                maximum=MAX_VIOLATION_OUTBOX_MAX_ATTEMPTS,
+            ),
+            violation_outbox_rate_limit_per_second=_bounded_int(
+                data.get("violation_outbox_rate_limit_per_second"),
+                default=DEFAULT_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND,
+                minimum=MIN_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND,
+                maximum=MAX_VIOLATION_OUTBOX_RATE_LIMIT_PER_SECOND,
             ),
             obfuscated_word_matching_enabled=_as_bool(
                 data.get("obfuscated_word_matching_enabled"),

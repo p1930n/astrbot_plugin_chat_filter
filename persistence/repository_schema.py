@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
 
 
 class RepositorySchemaError(RuntimeError):
@@ -132,7 +132,7 @@ V3_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
-REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+V4_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     **V3_REQUIRED_TABLE_COLUMNS,
     "group_action_policies": (
         "platform",
@@ -142,6 +142,35 @@ REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "forward_enabled",
         "mode",
         "updated_by",
+        "created_at",
+        "updated_at",
+    ),
+}
+
+
+REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    **V4_REQUIRED_TABLE_COLUMNS,
+    "violation_outbox": (
+        "id",
+        "idempotency_key",
+        "priority",
+        "status",
+        "platform",
+        "group_id",
+        "user_id",
+        "message_id",
+        "sender_role",
+        "sender_display_name",
+        "group_display_name",
+        "message_text",
+        "matched_word",
+        "violation_id",
+        "attempt_count",
+        "max_attempts",
+        "error_code",
+        "locked_by",
+        "locked_at",
+        "available_at",
         "created_at",
         "updated_at",
     ),
@@ -168,6 +197,8 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         _validate_required_schema(connection, V2_REQUIRED_TABLE_COLUMNS)
     elif current_version == 3:
         _validate_required_schema(connection, V3_REQUIRED_TABLE_COLUMNS)
+    elif current_version == 4:
+        _validate_required_schema(connection, V4_REQUIRED_TABLE_COLUMNS)
 
     _create_schema_objects(connection)
     _migrate_schema_objects(connection, current_version)
@@ -359,6 +390,41 @@ def _create_schema_objects(connection: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_violation_push_deliveries_push_group
         ON violation_push_deliveries (platform, push_group_id, updated_at);
+
+        CREATE TABLE IF NOT EXISTS violation_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            idempotency_key TEXT NOT NULL UNIQUE,
+            priority INTEGER NOT NULL,
+            status TEXT NOT NULL
+                CHECK (status IN ('pending', 'processing', 'done', 'failed')),
+            platform TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            message_id TEXT NOT NULL DEFAULT '',
+            sender_role TEXT NOT NULL DEFAULT '',
+            sender_display_name TEXT NOT NULL DEFAULT '',
+            group_display_name TEXT NOT NULL DEFAULT '',
+            message_text TEXT NOT NULL,
+            matched_word TEXT NULL,
+            violation_id INTEGER NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            error_code TEXT NOT NULL DEFAULT '',
+            locked_by TEXT NOT NULL DEFAULT '',
+            locked_at TEXT NULL,
+            available_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (violation_id)
+                REFERENCES violation_events(id)
+                ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_violation_outbox_claim
+        ON violation_outbox (status, available_at, priority, created_at, id);
+
+        CREATE INDEX IF NOT EXISTS idx_violation_outbox_scope_status
+        ON violation_outbox (platform, group_id, status, updated_at);
 
         CREATE TABLE IF NOT EXISTS global_rules (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

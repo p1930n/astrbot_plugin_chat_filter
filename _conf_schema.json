@@ -68,5 +68,25 @@
     "description": "手动生成违禁词历史报表时的默认统计天数",
     "type": "int",
     "default": 7
+  },
+  "violation_outbox_max_pending": {
+    "description": "违规处理持久化 outbox 最大待处理/处理中任务数；超过后入口拒绝新增后台任务并记录背压指标",
+    "type": "int",
+    "default": 5000
+  },
+  "violation_outbox_worker_count": {
+    "description": "违规处理 outbox 后台 worker 数量；默认单 worker 保持禁言升级和审计顺序更稳定",
+    "type": "int",
+    "default": 1
+  },
+  "violation_outbox_max_attempts": {
+    "description": "单个 outbox 任务失败后的最大尝试次数；超过后标记 failed，不再重试",
+    "type": "int",
+    "default": 3
+  },
+  "violation_outbox_rate_limit_per_second": {
+    "description": "违规 outbox worker 每秒最多处理的任务数，用于限制高并发下的动作和写库压力",
+    "type": "int",
+    "default": 20
   }
 }

@@ -29,6 +29,7 @@ from astrbot_plugin_chat_filter.persistence.repository_schema import (  # noqa: 
     V1_REQUIRED_TABLE_COLUMNS,
     V2_REQUIRED_TABLE_COLUMNS,
     V3_REQUIRED_TABLE_COLUMNS,
+    V4_REQUIRED_TABLE_COLUMNS,
 )
 
 
@@ -194,6 +195,23 @@ class RepositorySchemaTests(unittest.TestCase):
             repository = ChatFilterRepository(root, max_word_count=20, max_word_length=80)
 
             self.assertEqual(repository.list_group_action_policies(platform="qq"), [])
+            self.assert_schema_complete(database_path)
+            with _connect(database_path) as connection:
+                self.assertEqual(_schema_version(connection), CURRENT_SCHEMA_VERSION)
+
+    def test_v4_database_migrates_to_outbox_table(self) -> None:
+        with _temporary_directory() as root:
+            database_path = Path(root) / DATABASE_FILENAME
+            with _connect(database_path) as connection:
+                _create_legacy_schema(
+                    connection,
+                    V4_REQUIRED_TABLE_COLUMNS,
+                    version=4,
+                )
+
+            repository = ChatFilterRepository(root, max_word_count=20, max_word_length=80)
+
+            self.assertEqual(repository.count_active_violation_outbox_jobs(), 0)
             self.assert_schema_complete(database_path)
             with _connect(database_path) as connection:
                 self.assertEqual(_schema_version(connection), CURRENT_SCHEMA_VERSION)

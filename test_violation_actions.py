@@ -28,6 +28,7 @@ from astrbot_plugin_chat_filter.platform.platform_actions import (  # noqa: E402
 from astrbot_plugin_chat_filter.services.violation_actions import (  # noqa: E402
     ViolationActionExecutor,
 )
+from astrbot_plugin_chat_filter.runtime.metrics import ChatFilterMetrics  # noqa: E402
 
 
 class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase):
@@ -46,12 +47,14 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
     ) -> None:
         repository = _Repository()
         logger = _Logger()
+        metrics = ChatFilterMetrics()
         executor = ViolationActionExecutor(
             repository,  # type: ignore[arg-type]
             logger=logger,
             default_mute_duration_seconds=60,
             default_mute_escalation_multiplier=2,
             default_mute_escalation_reset_seconds=3600,
+            metrics=metrics,
         )
 
         await executor.execute(
@@ -76,6 +79,45 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
         )
         self.assertIn(("Chat Filter mute action timed out.", ()), logger.errors)
         self.assertIn(("Chat Filter recall action timed out.", ()), logger.errors)
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot.counters["violation_action.mute.failed.total"], 1)
+        self.assertEqual(snapshot.counters["violation_action.recall.failed.total"], 1)
+        self.assertEqual(snapshot.counters["violation_action.mute.timeout.total"], 1)
+        self.assertEqual(snapshot.counters["violation_action.recall.timeout.total"], 1)
+        self.assertEqual(
+            snapshot.counters["violation_action.forward.not_scheduled.total"],
+            1,
+        )
+
+    async def test_execute_counts_recall_unsupported_without_message_id(self) -> None:
+        repository = _Repository()
+        logger = _Logger()
+        metrics = ChatFilterMetrics()
+        executor = ViolationActionExecutor(
+            repository,  # type: ignore[arg-type]
+            logger=logger,
+            default_mute_duration_seconds=60,
+            default_mute_escalation_multiplier=2,
+            default_mute_escalation_reset_seconds=3600,
+            metrics=metrics,
+        )
+
+        await executor.execute(
+            violation_id=7,
+            message=ChatMessage(
+                platform="aiocqhttp",
+                group_id="100",
+                user_id="200",
+                text="blocked text",
+            ),
+            platform_actions=_SuccessfulPlatformActions(),
+        )
+
+        snapshot = metrics.snapshot()
+        self.assertEqual(
+            snapshot.counters["violation_action.recall.unsupported.total"],
+            1,
+        )
 
     async def test_execute_without_violation_id_still_runs_actions_without_audit(
         self,
@@ -88,6 +130,7 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
             default_mute_duration_seconds=60,
             default_mute_escalation_multiplier=2,
             default_mute_escalation_reset_seconds=3600,
+            metrics=ChatFilterMetrics(),
         )
 
         await executor.execute(
@@ -125,6 +168,7 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
             default_mute_duration_seconds=60,
             default_mute_escalation_multiplier=2,
             default_mute_escalation_reset_seconds=3600,
+            metrics=ChatFilterMetrics(),
         )
 
         await executor.execute(
@@ -166,6 +210,7 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
             default_mute_duration_seconds=60,
             default_mute_escalation_multiplier=2,
             default_mute_escalation_reset_seconds=3600,
+            metrics=ChatFilterMetrics(),
         )
 
         await executor.execute(
@@ -265,6 +310,14 @@ class _Repository:
         status: str,
     ) -> None:
         self.status_updates.append((violation_id, action, status))
+
+    def get_violation_action_statuses(
+        self,
+        *,
+        violation_id: int,
+    ) -> dict[str, str]:
+        _ = violation_id
+        return {}
 
     def upsert_violation_push_delivery(
         self,

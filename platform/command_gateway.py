@@ -208,6 +208,12 @@ class CommandGateway:
             ),
         )
 
+    async def metrics(self, event: AstrMessageEvent):
+        return self.command_result(
+            event,
+            await self._controller.metrics(dehydrate_event_snapshot(event)),
+        )
+
     async def action_status(
         self,
         event: AstrMessageEvent,

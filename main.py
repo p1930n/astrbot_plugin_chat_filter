@@ -49,9 +49,11 @@ class ChatFilterPlugin(Star):
         self.state = runtime.state
         self.command_service = runtime.command_service
         self.matcher = runtime.matcher
+        self.metrics = runtime.metrics
         self.platform_actions = runtime.platform_actions
         self.violation_action_executor = runtime.violation_action_executor
         self.violation_recorder = runtime.violation_recorder
+        self.violation_job_queue = runtime.violation_job_queue
         self.message_filter_service = runtime.message_filter_service
         self.report_service = runtime.report_service
         self.file_probe_service = runtime.file_probe_service
@@ -68,12 +70,20 @@ class ChatFilterPlugin(Star):
             message.platform,
             extract_onebot_action_client(event),
         )
+        self.violation_job_queue.register_platform_actions(
+            message.platform,
+            platform_actions,
+        )
         result = await self.message_filter_service.handle_group_message(
             message,
             platform_actions,
         )
         if result.stop_event:
             event.stop_event()
+        self.violation_job_queue.start()
+
+    async def terminate(self) -> None:
+        await self.violation_job_queue.shutdown()
 
     @filter.command_group("cf")
     def cf():
@@ -160,6 +170,10 @@ class ChatFilterPlugin(Star):
     @cf.command("regex-skips")
     async def cf_regex_skips(self, event: AstrMessageEvent, limit: str = ""):
         yield await self._command_gateway.regex_skips(event, limit)
+
+    @cf.command("metrics")
+    async def cf_metrics(self, event: AstrMessageEvent):
+        yield await self._command_gateway.metrics(event)
 
     @cf.group("action")
     def cf_action():

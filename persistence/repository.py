@@ -9,6 +9,7 @@ from .repository_base import (
 )
 from .repository_action_policy import ActionPolicyRepositoryMixin
 from .repository_mute import MutePolicyRepositoryMixin
+from .repository_outbox import OutboxRepositoryMixin
 from .repository_push_bindings import PushBindingRepositoryMixin
 from .repository_rules import RuleRepositoryMixin
 from .repository_runtime_state import RuntimeStateRepositoryMixin
@@ -20,6 +21,7 @@ from ..domain.rule_models import GlobalRule, RuleType
 class ChatFilterRepository(
     RuntimeStateRepositoryMixin,
     ActionPolicyRepositoryMixin,
+    OutboxRepositoryMixin,
     PushBindingRepositoryMixin,
     MutePolicyRepositoryMixin,
     ViolationRepositoryMixin,

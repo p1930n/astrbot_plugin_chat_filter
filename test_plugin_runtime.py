@@ -54,9 +54,11 @@ class PluginRuntimeBuilderTests(unittest.TestCase):
                 "state",
                 "command_service",
                 "matcher",
+                "metrics",
                 "platform_actions",
                 "violation_action_executor",
                 "violation_recorder",
+                "violation_job_queue",
                 "message_filter_service",
                 "report_service",
                 "file_probe_service",
@@ -79,9 +81,18 @@ class PluginRuntimeBuilderTests(unittest.TestCase):
                 runtime.platform_action_factory,
             )
             self.assertIs(
-                runtime.message_filter_service._violation_recorder,
+                runtime.message_filter_service._violation_job_queue,
+                runtime.violation_job_queue,
+            )
+            self.assertIs(
+                runtime.violation_job_queue._violation_recorder,
                 runtime.violation_recorder,
             )
+            self.assertIs(
+                runtime.violation_job_queue._violation_action_executor,
+                runtime.violation_action_executor,
+            )
+            self.assertIs(runtime.message_filter_service._metrics, runtime.metrics)
             platform_actions = runtime.platform_action_factory.for_platform(
                 "aiocqhttp",
                 object(),

@@ -144,6 +144,7 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
             ("cf_status", "status", ()),
             ("cf_overview", "overview", ("csv",)),
             ("cf_regex_skips", "regex_skips", ("5",)),
+            ("cf_metrics", "metrics", ()),
             ("cf_action_status", "action_status", ("group-1",)),
             ("cf_action_mode", "action_mode", ("group-1", "audit")),
             ("cf_action_overview", "action_overview", ("csv",)),

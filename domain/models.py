@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Literal
 
 
 GROUP_MANAGER_ROLES = frozenset(("owner", "admin"))
@@ -166,3 +167,62 @@ class ViolationPushDelivery:
     push_group_id: str
     action_status: str
     error_code: str = ""
+
+
+ViolationOutboxStatus = Literal["pending", "processing", "done", "failed"]
+ViolationOutboxEnqueueStatus = Literal["enqueued", "duplicate", "backpressure"]
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationOutboxEntry:
+    idempotency_key: str
+    priority: int
+    platform: str
+    group_id: str
+    user_id: str
+    message_text: str
+    matched_word: str | None
+    message_id: str = ""
+    sender_role: str = ""
+    sender_display_name: str = ""
+    group_display_name: str = ""
+    max_attempts: int = 3
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationOutboxEnqueueResult:
+    status: ViolationOutboxEnqueueStatus
+    job_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationOutboxJob:
+    job_id: int
+    idempotency_key: str
+    priority: int
+    status: ViolationOutboxStatus
+    platform: str
+    group_id: str
+    user_id: str
+    message_text: str
+    matched_word: str | None
+    message_id: str
+    sender_role: str
+    sender_display_name: str
+    group_display_name: str
+    violation_id: int | None
+    attempt_count: int
+    max_attempts: int
+    error_code: str = ""
+
+    def to_chat_message(self) -> ChatMessage:
+        return ChatMessage(
+            platform=self.platform,
+            group_id=self.group_id,
+            user_id=self.user_id,
+            text=self.message_text,
+            message_id=self.message_id,
+            sender_role=self.sender_role,
+            sender_display_name=self.sender_display_name,
+            group_display_name=self.group_display_name,
+        )
