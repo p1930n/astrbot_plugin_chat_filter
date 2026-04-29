@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 class RepositorySchemaError(RuntimeError):
@@ -120,13 +120,29 @@ V2_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
-REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+V3_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     **V2_REQUIRED_TABLE_COLUMNS,
     "group_policies": (
         "group_key",
         "enabled",
         "inherit_global",
         "admin_exempt_enabled",
+        "updated_at",
+    ),
+}
+
+
+REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    **V3_REQUIRED_TABLE_COLUMNS,
+    "group_action_policies": (
+        "platform",
+        "group_id",
+        "mute_enabled",
+        "recall_enabled",
+        "forward_enabled",
+        "mode",
+        "updated_by",
+        "created_at",
         "updated_at",
     ),
 }
@@ -150,6 +166,8 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         _validate_required_schema(connection, V1_REQUIRED_TABLE_COLUMNS)
     elif current_version == 2:
         _validate_required_schema(connection, V2_REQUIRED_TABLE_COLUMNS)
+    elif current_version == 3:
+        _validate_required_schema(connection, V3_REQUIRED_TABLE_COLUMNS)
 
     _create_schema_objects(connection)
     _migrate_schema_objects(connection, current_version)
@@ -229,6 +247,20 @@ def _create_schema_objects(connection: sqlite3.Connection) -> None:
             multiplier INTEGER NOT NULL,
             reset_seconds INTEGER NOT NULL,
             enabled INTEGER NOT NULL DEFAULT 1,
+            updated_by TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (platform, group_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS group_action_policies (
+            platform TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            mute_enabled INTEGER NOT NULL DEFAULT 1,
+            recall_enabled INTEGER NOT NULL DEFAULT 1,
+            forward_enabled INTEGER NOT NULL DEFAULT 1,
+            mode TEXT NOT NULL DEFAULT 'strict'
+                CHECK (mode IN ('strict', 'audit')),
             updated_by TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,

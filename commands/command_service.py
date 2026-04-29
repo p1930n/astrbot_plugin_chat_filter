@@ -19,8 +19,14 @@ from ..services.forward_probe_service import (
 )
 from .global_command_service import GlobalCommandService
 from .group_policy_command_service import GroupPolicyCommandService
+from .action_policy_command_service import ActionPolicyCommandService
 from .overview_command_service import OverviewCommandService
-from ..domain.models import GroupPolicy, PlatformEventSnapshot, PushBinding, RuntimeState
+from ..domain.models import (
+    GroupPolicy,
+    PlatformEventSnapshot,
+    PushBinding,
+    RuntimeState,
+)
 from .mute_policy_command_service import MutePolicyCommandService
 from ..platform.platform_actions import PlatformActions
 from .push_binding_command_service import (
@@ -62,6 +68,11 @@ class ChatFilterCommandService:
             settings,
             self._runtime,
         )
+        self._action_policy_commands = ActionPolicyCommandService(
+            repository,
+            state,
+            logger,
+        )
         self._push_binding_commands = PushBindingCommandService(repository, logger)
         self._overview_commands = OverviewCommandService(repository, state, logger)
         self._mute_policy_commands = MutePolicyCommandService(
@@ -76,6 +87,9 @@ class ChatFilterCommandService:
 
     def format_help(self) -> str:
         return self._global_commands.format_help()
+
+    def format_regex_skips(self, limit: str = "") -> str:
+        return self._global_commands.format_regex_skips(limit)
 
     def format_group_status(self, group_key: str | None) -> str:
         return self._group_policy_commands.format_group_status(group_key)
@@ -126,6 +140,59 @@ class ChatFilterCommandService:
 
     async def format_overview(self, platform: str, output_format: str = "") -> str:
         return await self._overview_commands.format_overview(platform, output_format)
+
+    async def format_group_action_policy(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+    ) -> str:
+        return await self._action_policy_commands.format_group_action_policy(
+            platform=platform,
+            group_id=group_id,
+        )
+
+    async def set_group_action_toggle(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        action: str,
+        enabled: str,
+        updated_by: str,
+    ) -> str:
+        return await self._action_policy_commands.set_group_action_toggle(
+            platform=platform,
+            group_id=group_id,
+            action=action,
+            enabled=enabled,
+            updated_by=updated_by,
+        )
+
+    async def set_group_action_mode(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+        mode: str,
+        updated_by: str,
+    ) -> str:
+        return await self._action_policy_commands.set_group_action_mode(
+            platform=platform,
+            group_id=group_id,
+            mode=mode,
+            updated_by=updated_by,
+        )
+
+    async def format_action_policy_overview(
+        self,
+        platform: str,
+        output_format: str = "",
+    ) -> str:
+        return await self._action_policy_commands.format_action_policy_overview(
+            platform,
+            output_format,
+        )
 
     async def set_group_mute_duration(
         self,

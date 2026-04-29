@@ -143,6 +143,10 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
             ("cf_help", "help", ()),
             ("cf_status", "status", ()),
             ("cf_overview", "overview", ("csv",)),
+            ("cf_regex_skips", "regex_skips", ("5",)),
+            ("cf_action_status", "action_status", ("group-1",)),
+            ("cf_action_mode", "action_mode", ("group-1", "audit")),
+            ("cf_action_overview", "action_overview", ("csv",)),
             ("cf_enable", "enable", ("group-1",)),
             ("cf_disable", "disable", ("group-1",)),
             ("cf_group_status", "group_status", ()),
@@ -171,6 +175,9 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
     def test_overview_entries_allow_empty_output_format(self) -> None:
         cases = (
             ("cf_overview", "overview"),
+            ("cf_regex_skips", "regex_skips"),
+            ("cf_action_status", "action_status"),
+            ("cf_action_overview", "action_overview"),
         )
 
         for handler_name, gateway_method in cases:
@@ -183,6 +190,29 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
 
                 self.assertEqual(results, [f"gateway:{gateway_method}"])
                 self.assertEqual(gateway.calls, [(gateway_method, (event, ""))])
+
+    def test_action_toggle_entries_pass_action_name_to_gateway(self) -> None:
+        cases = (
+            ("cf_action_mute", "mute"),
+            ("cf_action_recall", "recall"),
+            ("cf_action_forward", "forward"),
+        )
+
+        for handler_name, action in cases:
+            with self.subTest(handler=handler_name):
+                gateway = _CommandGatewayProbe()
+                plugin = _plugin(gateway)
+                event = _Event()
+
+                results = _collect_async_generator(
+                    getattr(plugin, handler_name)(event, "group-1", "off")
+                )
+
+                self.assertEqual(results, ["gateway:action_toggle"])
+                self.assertEqual(
+                    gateway.calls,
+                    [("action_toggle", (event, action, "group-1", "off"))],
+                )
 
 
 class _LegacyBridgeFailingPlugin(ChatFilterPlugin):

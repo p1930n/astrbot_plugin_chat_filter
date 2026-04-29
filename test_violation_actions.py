@@ -15,6 +15,7 @@ if str(PACKAGE_PARENT) not in sys.path:
 from astrbot_plugin_chat_filter.services import violation_actions  # noqa: E402
 from astrbot_plugin_chat_filter.domain.models import (  # noqa: E402
     ChatMessage,
+    GroupActionPolicy,
     MuteEscalationDecision,
     PushBinding,
     ViolationPushDelivery,
@@ -142,12 +143,75 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual(platform_actions.text_log_targets, ["900"])
         self.assertEqual(repository.push_deliveries, [])
 
+    async def test_execute_audit_mode_skips_mute_and_recall_but_forwards(self) -> None:
+        repository = _Repository(
+            action_policy=GroupActionPolicy(
+                platform="aiocqhttp",
+                group_id="100",
+                mode="audit",
+            ),
+            push_bindings=[
+                PushBinding(
+                    platform="aiocqhttp",
+                    listening_group_id="100",
+                    push_group_id="900",
+                )
+            ],
+        )
+        logger = _Logger()
+        platform_actions = _SuccessfulPlatformActions()
+        executor = ViolationActionExecutor(
+            repository,  # type: ignore[arg-type]
+            logger=logger,
+            default_mute_duration_seconds=60,
+            default_mute_escalation_multiplier=2,
+            default_mute_escalation_reset_seconds=3600,
+        )
+
+        await executor.execute(
+            violation_id=7,
+            message=ChatMessage(
+                platform="aiocqhttp",
+                group_id="100",
+                user_id="200",
+                text="blocked text",
+                message_id="300",
+            ),
+            platform_actions=platform_actions,
+        )
+
+        self.assertEqual(platform_actions.mute_calls, 0)
+        self.assertEqual(platform_actions.recall_calls, 0)
+        self.assertEqual(platform_actions.forward_targets, ["900"])
+        self.assertEqual(
+            repository.status_updates,
+            [
+                (7, "mute", "not_scheduled"),
+                (7, "recall", "not_scheduled"),
+                (7, "forward", "success"),
+            ],
+        )
+
 
 class _Repository:
-    def __init__(self, push_bindings: list[PushBinding] | None = None) -> None:
+    def __init__(
+        self,
+        push_bindings: list[PushBinding] | None = None,
+        action_policy: GroupActionPolicy | None = None,
+    ) -> None:
         self._push_bindings = push_bindings or []
+        self._action_policy = action_policy
         self.status_updates: list[tuple[int, str, str]] = []
         self.push_deliveries: list[ViolationPushDelivery] = []
+
+    def get_group_action_policy(
+        self,
+        *,
+        platform: str,
+        group_id: str,
+    ) -> GroupActionPolicy | None:
+        _ = platform, group_id
+        return self._action_policy
 
     def get_enabled_group_mute_policy(
         self,
@@ -241,6 +305,8 @@ class _HangingPlatformActions:
 
 class _SuccessfulPlatformActions:
     def __init__(self) -> None:
+        self.mute_calls = 0
+        self.recall_calls = 0
         self.forward_targets: list[str] = []
         self.text_log_targets: list[str] = []
 
@@ -255,10 +321,12 @@ class _SuccessfulPlatformActions:
 
     async def mute_user(self, request: object) -> PlatformActionResult:
         _ = request
+        self.mute_calls += 1
         return PlatformActionResult(status="success")
 
     async def recall_message(self, request: object) -> PlatformActionResult:
         _ = request
+        self.recall_calls += 1
         return PlatformActionResult(status="success")
 
     async def send_forward_message(self, request: object) -> PlatformActionResult:

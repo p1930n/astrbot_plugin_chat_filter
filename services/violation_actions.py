@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from typing import Protocol
 
-from ..domain.models import ChatMessage
+from ..domain.models import ChatMessage, GroupActionPolicy
 from ..platform.platform_actions import (
     ACTION_STATUS_UNSUPPORTED,
     MuteUserRequest,
@@ -38,6 +38,8 @@ REASON_MUTE_ACTION_FAILED = "mute_action_failed"
 REASON_MUTE_ACTION_TIMEOUT = "mute_action_timeout"
 REASON_RECALL_ACTION_FAILED = "recall_action_failed"
 REASON_RECALL_ACTION_TIMEOUT = "recall_action_timeout"
+REASON_ACTION_POLICY_AUDIT_MODE = "action_policy_audit_mode"
+REASON_ACTION_POLICY_DISABLED = "action_policy_disabled"
 MUTE_ACTION_TIMEOUT_SECONDS = 10.0
 RECALL_ACTION_TIMEOUT_SECONDS = 10.0
 
@@ -56,6 +58,8 @@ __all__ = (
     "REASON_PUSH_BINDING_LOOKUP_FAILED",
     "REASON_RECALL_ACTION_FAILED",
     "REASON_RECALL_ACTION_TIMEOUT",
+    "REASON_ACTION_POLICY_AUDIT_MODE",
+    "REASON_ACTION_POLICY_DISABLED",
     "REASON_TEXT_LOG_ACTION_FAILED",
     "REASON_TEXT_LOG_ACTION_TIMEOUT",
     "RECALL_ACTION_TIMEOUT_SECONDS",
@@ -101,32 +105,84 @@ class ViolationActionExecutor:
         message: ChatMessage,
         platform_actions: PlatformActions,
     ) -> None:
-        mute_result = await self._mute_user(message, platform_actions)
+        policy = await self._action_policy_for_group(message)
+        mute_result = await self._maybe_mute_user(message, platform_actions, policy)
         await self._audit.update_status(
             violation_id=violation_id,
             action=ACTION_MUTE,
             result=mute_result,
         )
 
-        recall_result = await self._recall_message(message, platform_actions)
+        recall_result = await self._maybe_recall_message(
+            message,
+            platform_actions,
+            policy,
+        )
         await self._audit.update_status(
             violation_id=violation_id,
             action=ACTION_RECALL,
             result=recall_result,
         )
 
-        forward_result = await self._push_notifier.forward(
-            violation_id=violation_id,
-            message=message,
-            platform_actions=platform_actions,
-            mute_result=mute_result,
-            recall_result=recall_result,
-        )
+        if policy.forward_enabled:
+            forward_result = await self._push_notifier.forward(
+                violation_id=violation_id,
+                message=message,
+                platform_actions=platform_actions,
+                mute_result=mute_result,
+                recall_result=recall_result,
+            )
+        else:
+            forward_result = _not_scheduled(REASON_ACTION_POLICY_DISABLED)
         await self._audit.update_status(
             violation_id=violation_id,
             action=ACTION_FORWARD,
             result=forward_result,
         )
+
+    async def _action_policy_for_group(self, message: ChatMessage) -> GroupActionPolicy:
+        try:
+            policy = await asyncio.to_thread(
+                self._repository.get_group_action_policy,
+                platform=message.platform,
+                group_id=message.group_id,
+            )
+        except Exception as exc:
+            self._logger.error(
+                "Chat Filter action policy lookup failed: error_type=%s",
+                type(exc).__name__,
+            )
+            policy = None
+        if policy is None:
+            return GroupActionPolicy(
+                platform=message.platform,
+                group_id=message.group_id,
+            )
+        return policy
+
+    async def _maybe_mute_user(
+        self,
+        message: ChatMessage,
+        platform_actions: PlatformActions,
+        policy: GroupActionPolicy,
+    ) -> PlatformActionResult:
+        if policy.mode == "audit":
+            return _not_scheduled(REASON_ACTION_POLICY_AUDIT_MODE)
+        if not policy.mute_enabled:
+            return _not_scheduled(REASON_ACTION_POLICY_DISABLED)
+        return await self._mute_user(message, platform_actions)
+
+    async def _maybe_recall_message(
+        self,
+        message: ChatMessage,
+        platform_actions: PlatformActions,
+        policy: GroupActionPolicy,
+    ) -> PlatformActionResult:
+        if policy.mode == "audit":
+            return _not_scheduled(REASON_ACTION_POLICY_AUDIT_MODE)
+        if not policy.recall_enabled:
+            return _not_scheduled(REASON_ACTION_POLICY_DISABLED)
+        return await self._recall_message(message, platform_actions)
 
     async def _mute_user(
         self,
@@ -231,3 +287,7 @@ class ViolationActionExecutor:
                 type(exc).__name__,
             )
             return PlatformActionResult.failed(REASON_RECALL_ACTION_FAILED)
+
+
+def _not_scheduled(reason: str) -> PlatformActionResult:
+    return PlatformActionResult(status="not_scheduled", reason=reason)

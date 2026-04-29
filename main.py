@@ -157,6 +157,81 @@ class ChatFilterPlugin(Star):
     async def cf_overview(self, event: AstrMessageEvent, output_format: str = ""):
         yield await self._command_gateway.overview(event, output_format)
 
+    @cf.command("regex-skips")
+    async def cf_regex_skips(self, event: AstrMessageEvent, limit: str = ""):
+        yield await self._command_gateway.regex_skips(event, limit)
+
+    @cf.group("action")
+    def cf_action():
+        pass
+
+    @cf_action.command("status")
+    async def cf_action_status(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+    ):
+        yield await self._command_gateway.action_status(event, group_id)
+
+    @cf_action.command("mute")
+    async def cf_action_mute(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        enabled: str = "",
+    ):
+        yield await self._command_gateway.action_toggle(
+            event,
+            "mute",
+            group_id,
+            enabled,
+        )
+
+    @cf_action.command("recall")
+    async def cf_action_recall(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        enabled: str = "",
+    ):
+        yield await self._command_gateway.action_toggle(
+            event,
+            "recall",
+            group_id,
+            enabled,
+        )
+
+    @cf_action.command("forward")
+    async def cf_action_forward(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        enabled: str = "",
+    ):
+        yield await self._command_gateway.action_toggle(
+            event,
+            "forward",
+            group_id,
+            enabled,
+        )
+
+    @cf_action.command("mode")
+    async def cf_action_mode(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        mode: str = "",
+    ):
+        yield await self._command_gateway.action_mode(event, group_id, mode)
+
+    @cf_action.command("overview")
+    async def cf_action_overview(
+        self,
+        event: AstrMessageEvent,
+        output_format: str = "",
+    ):
+        yield await self._command_gateway.action_overview(event, output_format)
+
     @cf.command("enable")
     async def cf_enable(self, event: AstrMessageEvent, group_id: str = ""):
         yield await self._command_gateway.enable(event, group_id)

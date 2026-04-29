@@ -28,6 +28,7 @@ from astrbot_plugin_chat_filter.persistence.repository_schema import (  # noqa: 
     REQUIRED_TABLE_COLUMNS,
     V1_REQUIRED_TABLE_COLUMNS,
     V2_REQUIRED_TABLE_COLUMNS,
+    V3_REQUIRED_TABLE_COLUMNS,
 )
 
 
@@ -180,6 +181,23 @@ class RepositorySchemaTests(unittest.TestCase):
                             1,
                         )
 
+    def test_v3_database_migrates_to_action_policy_table(self) -> None:
+        with _temporary_directory() as root:
+            database_path = Path(root) / DATABASE_FILENAME
+            with _connect(database_path) as connection:
+                _create_legacy_schema(
+                    connection,
+                    V3_REQUIRED_TABLE_COLUMNS,
+                    version=3,
+                )
+
+            repository = ChatFilterRepository(root, max_word_count=20, max_word_length=80)
+
+            self.assertEqual(repository.list_group_action_policies(platform="qq"), [])
+            self.assert_schema_complete(database_path)
+            with _connect(database_path) as connection:
+                self.assertEqual(_schema_version(connection), CURRENT_SCHEMA_VERSION)
+
     def test_json_state_missing_group_admin_exemption_defaults_enabled(self) -> None:
         with _temporary_directory() as root:
             state_path = Path(root) / STATE_FILENAME
@@ -283,16 +301,29 @@ def _create_legacy_schema(
             )
             continue
         if table_name == "group_policies":
-            connection.execute(
-                """
-                CREATE TABLE group_policies (
-                    group_key TEXT PRIMARY KEY,
-                    enabled INTEGER NULL,
-                    inherit_global INTEGER NOT NULL,
-                    updated_at TEXT NOT NULL
+            if "admin_exempt_enabled" in columns:
+                connection.execute(
+                    """
+                    CREATE TABLE group_policies (
+                        group_key TEXT PRIMARY KEY,
+                        enabled INTEGER NULL,
+                        inherit_global INTEGER NOT NULL,
+                        admin_exempt_enabled INTEGER NOT NULL DEFAULT 1,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
+            else:
+                connection.execute(
+                    """
+                    CREATE TABLE group_policies (
+                        group_key TEXT PRIMARY KEY,
+                        enabled INTEGER NULL,
+                        inherit_global INTEGER NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
             continue
         if table_name == "group_words":
             connection.execute(

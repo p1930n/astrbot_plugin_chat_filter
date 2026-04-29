@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 
 DEFAULT_WARNING_MESSAGE = "消息触发聊天过滤策略，请调整后重试。"
@@ -26,12 +26,39 @@ MAX_OBFUSCATED_WORD_MAX_GAP = 64
 REGEX_GAP_PLACEHOLDER = "{{GAP}}"
 DEFAULT_REGEX_GAP_MAX = 8
 MAX_REGEX_GAP_MAX = 64
+DEFAULT_REGEX_SKIP_PREVIEW_LENGTH = 80
+
+RegexRuleSkipReason = Literal[
+    "empty",
+    "too_long",
+    "duplicate",
+    "high_risk",
+    "compile_error",
+    "max_count",
+    "non_string",
+]
 
 
 @dataclass(frozen=True, slots=True)
 class RegexRule:
     pattern: str
     compiled: re.Pattern[str]
+
+
+@dataclass(frozen=True, slots=True)
+class RegexRuleSkip:
+    index: int
+    reason: RegexRuleSkipReason
+    pattern_preview: str
+    pattern_length: int | None
+    source_id: str | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class RegexRuleNormalizationResult:
+    rules: tuple[RegexRule, ...]
+    skipped: tuple[RegexRuleSkip, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +109,10 @@ class ChatFilterSettings:
             warning_message=_safe_message(data.get("warning_message")),
             max_word_count=max_word_count,
             max_word_length=max_word_length,
-            violation_records_enabled=_as_bool(data.get("violation_records_enabled"), True),
+            violation_records_enabled=_as_bool(
+                data.get("violation_records_enabled"),
+                True,
+            ),
             mute_duration_seconds=mute_duration_seconds,
             mute_escalation_multiplier=_bounded_int(
                 data.get("mute_escalation_multiplier"),
@@ -97,7 +127,10 @@ class ChatFilterSettings:
                 maximum=MAX_MUTE_ESCALATION_RESET_SECONDS,
             ),
             default_report_days=_bounded_int(
-                data.get("default_report_days", data.get("default_report_interval_days")),
+                data.get(
+                    "default_report_days",
+                    data.get("default_report_interval_days"),
+                ),
                 default=DEFAULT_REPORT_DAYS,
                 minimum=1,
                 maximum=366,
@@ -166,39 +199,96 @@ def normalize_regex_rules(
     max_length: int,
     regex_gap_max: int = DEFAULT_REGEX_GAP_MAX,
 ) -> tuple[RegexRule, ...]:
+    return normalize_regex_rules_with_diagnostics(
+        value,
+        case_sensitive=case_sensitive,
+        max_count=max_count,
+        max_length=max_length,
+        regex_gap_max=regex_gap_max,
+    ).rules
+
+
+def normalize_regex_rules_with_diagnostics(
+    value: object,
+    *,
+    case_sensitive: bool,
+    max_count: int,
+    max_length: int,
+    regex_gap_max: int = DEFAULT_REGEX_GAP_MAX,
+    source_ids: tuple[str | None, ...] | None = None,
+) -> RegexRuleNormalizationResult:
     if value is None:
-        return ()
+        return RegexRuleNormalizationResult(rules=(), skipped=())
     if isinstance(value, str):
         items = [value]
     elif isinstance(value, list | tuple | set):
         items = list(value)
     else:
-        return ()
+        return RegexRuleNormalizationResult(
+            rules=(),
+            skipped=(
+                _regex_skip(
+                    0,
+                    "non_string",
+                    value,
+                    source_id=_source_id(source_ids, 0),
+                ),
+            ),
+        )
 
     flags = 0 if case_sensitive else re.IGNORECASE
     normalized: list[RegexRule] = []
+    skipped: list[RegexRuleSkip] = []
     seen: set[str] = set()
-    for item in items:
+    for index, item in enumerate(items):
+        source_id = _source_id(source_ids, index)
         if not isinstance(item, str):
+            skipped.append(_regex_skip(index, "non_string", item, source_id=source_id))
             continue
         raw_pattern = item.strip()
         pattern = _expand_regex_gap_placeholder(raw_pattern, regex_gap_max)
-        if (
-            not pattern
-            or len(pattern) > max_length
-            or pattern in seen
-            or _looks_like_high_risk_regex(pattern)
-        ):
+        if not pattern:
+            skipped.append(_regex_skip(index, "empty", pattern, source_id=source_id))
+            continue
+        if len(pattern) > max_length:
+            skipped.append(
+                _regex_skip(index, "too_long", pattern, source_id=source_id)
+            )
+            continue
+        if pattern in seen:
+            skipped.append(
+                _regex_skip(index, "duplicate", pattern, source_id=source_id)
+            )
+            continue
+        if len(normalized) >= max_count:
+            skipped.append(
+                _regex_skip(index, "max_count", pattern, source_id=source_id)
+            )
+            continue
+        if _looks_like_high_risk_regex(pattern):
+            skipped.append(
+                _regex_skip(index, "high_risk", pattern, source_id=source_id)
+            )
             continue
         try:
             compiled = re.compile(pattern, flags)
-        except re.error:
+        except re.error as exc:
+            skipped.append(
+                _regex_skip(
+                    index,
+                    "compile_error",
+                    pattern,
+                    source_id=source_id,
+                    detail=str(exc),
+                )
+            )
             continue
         normalized.append(RegexRule(pattern=pattern, compiled=compiled))
         seen.add(pattern)
-        if len(normalized) >= max_count:
-            break
-    return tuple(normalized)
+    return RegexRuleNormalizationResult(
+        rules=tuple(normalized),
+        skipped=tuple(skipped),
+    )
 
 
 def _expand_regex_gap_placeholder(pattern: str, regex_gap_max: int) -> str:
@@ -216,6 +306,49 @@ def _looks_like_high_risk_regex(pattern: str) -> bool:
     if re.search(r"\\[1-9]", pattern):
         return True
     return False
+
+
+def _regex_skip(
+    index: int,
+    reason: RegexRuleSkipReason,
+    value: object,
+    *,
+    source_id: str | None,
+    detail: str = "",
+) -> RegexRuleSkip:
+    pattern_length = len(value) if isinstance(value, str) else None
+    return RegexRuleSkip(
+        index=index,
+        reason=reason,
+        pattern_preview=_safe_pattern_preview(value),
+        pattern_length=pattern_length,
+        source_id=source_id,
+        detail=_safe_pattern_preview(detail) if detail else "",
+    )
+
+
+def _source_id(
+    source_ids: tuple[str | None, ...] | None,
+    index: int,
+) -> str | None:
+    if source_ids is None or index >= len(source_ids):
+        return None
+    return source_ids[index]
+
+
+def _safe_pattern_preview(value: object) -> str:
+    if not isinstance(value, str):
+        return f"<{type(value).__name__}>"
+    cleaned = (
+        value.replace("\r", "\\r")
+        .replace("\n", "\\n")
+        .replace("\t", "\\t")
+    )
+    if not cleaned:
+        return "<empty>"
+    if len(cleaned) <= DEFAULT_REGEX_SKIP_PREVIEW_LENGTH:
+        return cleaned
+    return f"{cleaned[:DEFAULT_REGEX_SKIP_PREVIEW_LENGTH]}..."
 
 
 def _config_list_or_default(

@@ -11,9 +11,11 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 每群启停：可单独开启或关闭某个群的过滤。
 - 群主/管理员豁免：每个群独立开关，默认开启；关闭后群主和管理员也会被检测。
 - 违规处置：命中后可警告用户、阻断事件、禁言、撤回消息。
+- 动作策略：可按群切换禁言、撤回、转发，并支持仅审计模式。
 - 命中转发：可把监听群命中消息转发到一个或多个推送群。
 - 禁言策略：支持每群设置基础禁言时长，并按连续命中叠加禁言。
 - 审计报表：命中记录写入 SQLite，可手动生成 TSV dry-run 报表。
+- 正则诊断：可查看被跳过的正则规则及原因，便于管理员修正规则。
 - 平台探针：提供转发消息和文件发送探针，便于调试平台适配能力。
 
 ## 指令
@@ -26,6 +28,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf status` | 查看全局词数量和已记录群数量。 |
 | `.cf overview` | 查看当前平台已启用过滤群、监听群和推送绑定数量摘要。 |
 | `.cf overview csv` | 以 CSV 格式列出当前平台启用过滤的群，以及监听群绑定的推送群。 |
+| `.cf regex-skips [数量]` | 查看启动时被跳过的正则规则及原因；仅 AstrBot 管理员可用。 |
 | `.cf enable [群号]` | 启用当前群或指定群过滤；不再作为全局开关。此命令只允许 AstrBot 管理员使用。 |
 | `.cf disable [群号]` | 关闭当前群或指定群过滤；不再作为全局开关。传入群号时只允许 AstrBot 管理员使用。 |
 | `.cf group status` | 查看当前群过滤状态、继承状态、管理员豁免状态和群自定义词数量。 |
@@ -38,6 +41,12 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf group admin-exempt enable` | 开启当前群群主/管理员豁免。 |
 | `.cf group admin-exempt disable` | 关闭当前群群主/管理员豁免。 |
 | `.cf group exempt status|enable|disable` | `admin-exempt` 的短别名。 |
+| `.cf action status [群号]` | 查看当前群或指定群的处置动作策略。 |
+| `.cf action mute [群号] on|off` | 开启或关闭指定群命中后的禁言动作；省略群号时作用于当前群。 |
+| `.cf action recall [群号] on|off` | 开启或关闭指定群命中后的撤回动作；省略群号时作用于当前群。 |
+| `.cf action forward [群号] on|off` | 开启或关闭指定群命中后的推送动作；省略群号时作用于当前群。 |
+| `.cf action mode [群号] strict|audit` | 设置指定群处置模式；`audit` 只审计和推送，不禁言、不撤回。 |
+| `.cf action overview [csv]` | 查看当前平台已知群的处置动作策略。 |
 | `.cf bind <监听群> <推送群>` | 为监听群添加命中消息推送群。 |
 | `.cf bind list` | 查看当前平台的推送绑定列表。 |
 | `.cf mute <群号> <秒数>` | 设置指定群命中后的基础禁言时长。 |
@@ -54,6 +63,8 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 默认情况下，命令允许 AstrBot 管理员、QQ群主或 QQ 群管理员使用。
 - `.cf enable` 和 `.cf group enable` 更严格，只允许 AstrBot 管理员使用。
 - `.cf disable [群号]` 指定群号时只允许 AstrBot 管理员使用；不指定群号时仍允许当前群的群主或管理员使用。
+- `.cf regex-skips` 只允许 AstrBot 管理员使用。
+- `.cf action ...` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改指定群号时只允许 AstrBot 管理员。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。
 
 ## 配置
@@ -82,6 +93,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 主数据库：`data/astrbot_plugin_chat_filter/chat_filter.db`
 - 全局规则表：`global_rules`
 - 群策略、推送绑定、禁言策略和命中记录也存储在 SQLite。
+- 群动作策略存储在 SQLite，scope 为 `platform + group_id`；未配置的群默认 `strict` 且禁言、撤回、转发全开。
 - 运行时 JSON 配置只保存功能开关和安全参数，不保存违禁词或正则规则。
 - 手动报表输出到插件数据目录下的 `reports/`。
 - 文件探针输出到插件数据目录下的 `probes/`。
@@ -91,6 +103,13 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - `aiocqhttp` 平台会优先使用 OneBot V11 action client 执行禁言、撤回、转发和文件发送。
 - 非 OneBot 或能力不可用的平台会返回 unsupported/failed 状态，过滤检测本身仍可运行。
 - 命中消息转发依赖 `.cf bind` 配置的推送群；没有绑定时只记录未调度状态。
+- 正则规则跳过原因包括 `empty`、`too_long`、`duplicate`、`high_risk`、`compile_error`、`max_count`、`non_string`。
+
+## 运行要求
+
+- Python: `>=3.10`
+- AstrBot: `>=4.16,<5`
+- 运行时第三方依赖：无
 
 ## 开发验证
 
@@ -98,3 +117,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 py -3.13 -B -m unittest discover -s . -p "test_*.py"
 git diff --check
 ```
+
+## License
+
+MIT

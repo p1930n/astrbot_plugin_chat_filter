@@ -3,3 +3,4 @@ desc: Chat Filter / chat detector plugin for group message filtering.
 version: 0.1.0
 author: p1930n
 display_name: Chat Filter
+astrbot_version: ">=4.16,<5"
