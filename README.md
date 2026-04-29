@@ -105,6 +105,35 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 命中消息转发依赖 `.cf bind` 配置的推送群；没有绑定时只记录未调度状态。
 - 正则规则跳过原因包括 `empty`、`too_long`、`duplicate`、`high_risk`、`compile_error`、`max_count`、`non_string`。
 
+## 压测 Metrics 快照
+
+以下图表来自一次 1000 个入口事件的运行中 metrics 快照，覆盖 counters、timing 样本数、平均耗时、最大耗时和累计耗时。耗时类图表使用对数刻度，避免低毫秒指标在图中不可见。
+
+![Chat Filter 完整 Metrics 快照柱状图](devlogs/phase-07/chat-filter-metrics-bars.svg)
+
+### 读图结论
+
+- 本次样本中，用户确认 990 条为真实群消息，10 条为非消息事件；`message.unmatched.total` 不应直接理解为 10 条真实聊天文本未命中。
+- `message.matcher.ms` 平均仅 0.082ms，说明关键词和规则匹配不是当前瓶颈。
+- `message.handle_group_message.total` 为 1000，但 `message.handle_group_message.ms` 只记录到 739 个样本；同时 `message.matched.total` 为 990，而 `violation_job.enqueued.total` 为 729。两组差值都是 261，说明抓取快照时仍有 261 个命中入口在等待入队完成。
+- `violation_job.enqueued.total` 为 729，而 `violation_job.completed.total` 为 67，说明这是压测过程中的中间状态，不是 outbox 队列排空后的最终吞吐结果。
+- 撤回、转发和文本日志动作基本在 1-2ms 级别；禁言动作出现过 5.52s 尖峰，但平均 82.79ms，不是当前最大平均瓶颈。
+
+### 建议
+
+- 将命中后的入口返回与违规任务持久化入队解耦，避免 `stop_event` 等待 SQLite 入队完成后才返回。
+- 补充 `violation_job.enqueue.ms`、`violation_job.enqueue_lock_wait.ms`、`violation_outbox.pending.count`、`violation_outbox.processing.count` 和 `oldest_pending_age_ms`，让下一轮压测能直接定位入队等待、锁等待和队列积压。
+- 将非文本事件、空文本事件和真实文本未命中拆成不同 counters，避免 `message.unmatched.total` 被误读。
+- 拆分 `violation_action.forward.success.total` 的语义，例如区分 per-target delivery success 与 aggregate forward success，避免把转发目标数误读为违规消息数。
+- 若继续压测突发流量，评估 SQLite WAL、写入批处理或单 writer 队列；生产前不要只靠增加 worker 数解决，因为连续禁言升级需要关注同一群/同一用户的顺序一致性。
+
+### 当前问题
+
+- 入口平均耗时约 16.49s，最大约 28.51s，不适合作为性能合格指标。
+- 当前快照缺少 p50、p95、p99，无法判断大多数消息的真实体验分布。
+- 快照抓取时 outbox 未排空，不能代表最终处理完成率。
+- 当前 metrics 可以作为诊断样本放入 README，但不应写成“压测通过”或“性能达标”。
+
 ## 运行要求
 
 - Python: `>=3.10`
