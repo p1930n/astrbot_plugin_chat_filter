@@ -30,7 +30,6 @@ class ViolationRecorderProtocol(Protocol):
         self,
         message: ChatMessage,
         matched_word: str | None,
-        platform_actions: PlatformActions,
     ) -> int | None:
         ...
 
@@ -39,7 +38,7 @@ class ViolationActionExecutorProtocol(Protocol):
     async def execute(
         self,
         *,
-        violation_id: int,
+        violation_id: int | None,
         message: ChatMessage,
         platform_actions: PlatformActions,
     ) -> None:
@@ -102,15 +101,13 @@ class MessageFilterService:
             violation_id = await self._violation_recorder.record(
                 message,
                 result.matched_word,
-                platform_actions,
             )
 
-        if violation_id is not None:
-            await self._violation_action_executor.execute(
-                violation_id=violation_id,
-                message=message,
-                platform_actions=platform_actions,
-            )
+        await self._violation_action_executor.execute(
+            violation_id=violation_id,
+            message=message,
+            platform_actions=platform_actions,
+        )
 
         if self._settings.warn_user:
             await self._send_warning_message(message, platform_actions)

@@ -16,6 +16,7 @@ from astrbot_plugin_chat_filter.services import violation_actions  # noqa: E402
 from astrbot_plugin_chat_filter.domain.models import (  # noqa: E402
     ChatMessage,
     MuteEscalationDecision,
+    PushBinding,
     ViolationPushDelivery,
 )
 from astrbot_plugin_chat_filter.platform.platform_actions import (  # noqa: E402
@@ -75,9 +76,76 @@ class ViolationActionExecutorRuntimeGuardTests(unittest.IsolatedAsyncioTestCase)
         self.assertIn(("Chat Filter mute action timed out.", ()), logger.errors)
         self.assertIn(("Chat Filter recall action timed out.", ()), logger.errors)
 
+    async def test_execute_without_violation_id_still_runs_actions_without_audit(
+        self,
+    ) -> None:
+        repository = _Repository()
+        logger = _Logger()
+        executor = ViolationActionExecutor(
+            repository,  # type: ignore[arg-type]
+            logger=logger,
+            default_mute_duration_seconds=60,
+            default_mute_escalation_multiplier=2,
+            default_mute_escalation_reset_seconds=3600,
+        )
+
+        await executor.execute(
+            violation_id=None,
+            message=ChatMessage(
+                platform="aiocqhttp",
+                group_id="100",
+                user_id="200",
+                text="blocked text",
+                message_id="300",
+            ),
+            platform_actions=_SuccessfulPlatformActions(),
+        )
+
+        self.assertEqual(repository.status_updates, [])
+        self.assertEqual(repository.push_deliveries, [])
+
+    async def test_execute_without_violation_id_still_forwards_to_bindings(
+        self,
+    ) -> None:
+        repository = _Repository(
+            push_bindings=[
+                PushBinding(
+                    platform="aiocqhttp",
+                    listening_group_id="100",
+                    push_group_id="900",
+                )
+            ]
+        )
+        logger = _Logger()
+        platform_actions = _SuccessfulPlatformActions()
+        executor = ViolationActionExecutor(
+            repository,  # type: ignore[arg-type]
+            logger=logger,
+            default_mute_duration_seconds=60,
+            default_mute_escalation_multiplier=2,
+            default_mute_escalation_reset_seconds=3600,
+        )
+
+        await executor.execute(
+            violation_id=None,
+            message=ChatMessage(
+                platform="aiocqhttp",
+                group_id="100",
+                user_id="200",
+                text="blocked text",
+                message_id="300",
+            ),
+            platform_actions=platform_actions,
+        )
+
+        self.assertEqual(platform_actions.forward_targets, ["900"])
+        self.assertEqual(platform_actions.text_log_targets, ["900"])
+        self.assertEqual(repository.push_deliveries, [])
+
 
 class _Repository:
-    def __init__(self) -> None:
+    def __init__(self, push_bindings: list[PushBinding] | None = None) -> None:
+        self._push_bindings = push_bindings or []
         self.status_updates: list[tuple[int, str, str]] = []
         self.push_deliveries: list[ViolationPushDelivery] = []
 
@@ -121,9 +189,9 @@ class _Repository:
         *,
         platform: str,
         listening_group_id: str,
-    ) -> list[object]:
+    ) -> list[PushBinding]:
         _ = platform, listening_group_id
-        return []
+        return self._push_bindings
 
     def update_violation_action_status(
         self,
@@ -165,6 +233,41 @@ class _HangingPlatformActions:
     async def send_text_log(self, request: object) -> PlatformActionResult:
         _ = request
         raise AssertionError("text log action should not run without bindings")
+
+    async def send_file(self, request: SendFileRequest) -> PlatformActionResult:
+        _ = request
+        raise AssertionError("file action should not run during violation handling")
+
+
+class _SuccessfulPlatformActions:
+    def __init__(self) -> None:
+        self.forward_targets: list[str] = []
+        self.text_log_targets: list[str] = []
+
+    def probe_capabilities(self, platform: str) -> PlatformActionCapabilities:
+        _ = platform
+        return PlatformActionCapabilities(
+            mute_user=True,
+            recall_message=True,
+            send_forward_message=True,
+            send_text_log=True,
+        )
+
+    async def mute_user(self, request: object) -> PlatformActionResult:
+        _ = request
+        return PlatformActionResult(status="success")
+
+    async def recall_message(self, request: object) -> PlatformActionResult:
+        _ = request
+        return PlatformActionResult(status="success")
+
+    async def send_forward_message(self, request: object) -> PlatformActionResult:
+        self.forward_targets.append(request.target_group_id)
+        return PlatformActionResult(status="success")
+
+    async def send_text_log(self, request: object) -> PlatformActionResult:
+        self.text_log_targets.append(request.target_group_id)
+        return PlatformActionResult(status="success")
 
     async def send_file(self, request: SendFileRequest) -> PlatformActionResult:
         _ = request
