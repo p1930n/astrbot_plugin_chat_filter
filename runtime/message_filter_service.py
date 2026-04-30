@@ -36,7 +36,7 @@ class MessageMatcher(Protocol):
 
 
 class ViolationJobQueueProtocol(Protocol):
-    async def enqueue(
+    def try_enqueue_ingress(
         self,
         *,
         message: ChatMessage,
@@ -111,7 +111,7 @@ class MessageFilterService:
                 return MessageFilterResult()
 
             safe_increment(self._metrics, METRIC_MATCHED_TOTAL)
-            await self._violation_job_queue.enqueue(
+            self._violation_job_queue.try_enqueue_ingress(
                 message=message,
                 matched_word=result.matched_word,
                 platform_actions=platform_actions,

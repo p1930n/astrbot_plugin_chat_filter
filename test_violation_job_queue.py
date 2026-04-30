@@ -90,6 +90,7 @@ class ViolationJobQueueTests(unittest.IsolatedAsyncioTestCase):
                     {
                         "violation_records_enabled": False,
                         "warn_user": False,
+                        "violation_outbox_worker_count": 0,
                     }
                 ),
             )
@@ -247,18 +248,12 @@ class ViolationJobQueueTests(unittest.IsolatedAsyncioTestCase):
                 executor=_Executor(),
                 metrics=metrics,
                 logger=logger,
-                settings=ChatFilterSettings.from_config(
-                    {
-                        "violation_outbox_max_pending": 100,
-                        "violation_records_enabled": False,
-                        "warn_user": False,
-                    }
+                settings=ChatFilterSettings(
+                    violation_records_enabled=False,
+                    warn_user=False,
+                    violation_outbox_max_pending=1,
+                    violation_outbox_worker_count=0,
                 ),
-            )
-            queue._settings = ChatFilterSettings(
-                violation_records_enabled=False,
-                warn_user=False,
-                violation_outbox_max_pending=1,
             )
 
             accepted = await queue.enqueue(
@@ -266,9 +261,15 @@ class ViolationJobQueueTests(unittest.IsolatedAsyncioTestCase):
                 matched_word="blocked",
                 platform_actions=_PlatformActions(),
             )
+            await _wait_for(
+                lambda: metrics.snapshot().counters.get(
+                    "violation_job.backpressure.total",
+                )
+                == 1
+            )
             await queue.shutdown()
 
-            self.assertFalse(accepted)
+            self.assertTrue(accepted)
             self.assertIsNone(repository.get_violation_outbox_job(2))
             snapshot = metrics.snapshot()
             self.assertEqual(snapshot.counters["violation_job.backpressure.total"], 1)

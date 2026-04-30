@@ -13,12 +13,11 @@ from ..domain.settings import ChatFilterSettings
 from ..persistence.repository import ChatFilterRepository
 from ..platform.platform_actions import PlatformActions, SendTextLogRequest
 from .metrics import ChatFilterMetrics, safe_increment, safe_observe_ms
+from .violation_ingress_writer import ViolationIngressWriter
 from .violation_job_helpers import (
     METRIC_JOB_BACKPRESSURE_TOTAL,
     METRIC_JOB_COMPLETED_TOTAL,
     METRIC_JOB_DEFERRED_TOTAL,
-    METRIC_JOB_DUPLICATE_TOTAL,
-    METRIC_JOB_ENQUEUED_TOTAL,
     METRIC_JOB_FAILED_TOTAL,
     METRIC_JOB_PROCESS_MS,
     METRIC_JOB_RETRIED_TOTAL,
@@ -78,17 +77,35 @@ class ViolationJobQueue:
         self._metrics = metrics
         self._logger = logger
         self._worker_id = f"chat-filter-{uuid4().hex}"
+        self._ingress_writer = ViolationIngressWriter(
+            settings=settings,
+            repository=repository,
+            metrics=metrics,
+            logger=logger,
+        )
         self._workers: set[asyncio.Task[None]] = set()
         self._closed = False
         self._recovered = False
         self._recover_lock = asyncio.Lock()
-        self._enqueue_lock = asyncio.Lock()
         self._rate_limiter = AsyncRateLimiter(
             settings.violation_outbox_rate_limit_per_second,
         )
         self._platform_actions_by_platform: dict[str, PlatformActions] = {}
 
     async def enqueue(
+        self,
+        *,
+        message: ChatMessage,
+        matched_word: str | None,
+        platform_actions: PlatformActions,
+    ) -> bool:
+        return self.try_enqueue_ingress(
+            message=message,
+            matched_word=matched_word,
+            platform_actions=platform_actions,
+        )
+
+    def try_enqueue_ingress(
         self,
         *,
         message: ChatMessage,
@@ -105,27 +122,10 @@ class ViolationJobQueue:
             matched_word,
             max_attempts=self._settings.violation_outbox_max_attempts,
         )
-        try:
-            async with self._enqueue_lock:
-                result = await asyncio.to_thread(
-                    self._repository.enqueue_violation_outbox,
-                    entry,
-                    max_active_jobs=self._settings.violation_outbox_max_pending,
-                )
-        except Exception as exc:
-            self._record_enqueue_backpressure(message, type(exc).__name__)
-            return False
-
-        self.start()
-        if result.status == "enqueued":
-            safe_increment(self._metrics, METRIC_JOB_ENQUEUED_TOTAL)
-            return True
-        if result.status == "duplicate":
-            safe_increment(self._metrics, METRIC_JOB_DUPLICATE_TOTAL)
-            return True
-
-        self._record_enqueue_backpressure(message, "max_pending")
-        return False
+        accepted = self._ingress_writer.try_enqueue(entry)
+        if accepted:
+            self.start()
+        return accepted
 
     def register_platform_actions(
         self,
@@ -136,7 +136,7 @@ class ViolationJobQueue:
             self._platform_actions_by_platform[platform] = platform_actions
 
     def start(self) -> None:
-        if self._closed or self._workers:
+        if self._closed:
             return
         try:
             asyncio.get_running_loop()
@@ -147,16 +147,20 @@ class ViolationJobQueue:
             )
             return
 
-        for index in range(self._settings.violation_outbox_worker_count):
-            task = asyncio.create_task(
-                self._worker_loop(),
-                name=f"chat-filter-violation-outbox-{index + 1}",
-            )
-            self._workers.add(task)
-            task.add_done_callback(self._workers.discard)
+        self._ingress_writer.start()
+
+        if not self._workers:
+            for index in range(self._settings.violation_outbox_worker_count):
+                task = asyncio.create_task(
+                    self._worker_loop(),
+                    name=f"chat-filter-violation-outbox-{index + 1}",
+                )
+                self._workers.add(task)
+                task.add_done_callback(self._workers.discard)
 
     async def shutdown(self) -> None:
         self._closed = True
+        await self._ingress_writer.shutdown()
         for task in tuple(self._workers):
             task.cancel()
         if self._workers:

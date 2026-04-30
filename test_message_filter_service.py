@@ -188,7 +188,7 @@ class _JobQueue:
         self._accepted = accepted
         self.calls: list[tuple[ChatMessage, str | None, _PlatformActions]] = []
 
-    async def enqueue(
+    def try_enqueue_ingress(
         self,
         *,
         message: ChatMessage,
