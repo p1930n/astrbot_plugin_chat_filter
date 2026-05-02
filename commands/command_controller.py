@@ -3,7 +3,12 @@ from __future__ import annotations
 from .command_auth import CommandAuthorizer
 from .action_policy_command_service import ACTION_POLICY_USAGE
 from .command_service import ChatFilterCommandService
-from .command_validation import is_valid_qq_group_id
+from .command_validation import (
+    build_group_key,
+    is_action_toggle_value,
+    resolve_target_group_id,
+    resolve_target_group_key,
+)
 from ..services.file_probe_service import FileProbeService
 from ..domain.models import PlatformEventSnapshot
 from ..platform.platform_actions import PlatformActions, format_platform_probe
@@ -238,7 +243,7 @@ class CommandController:
         snapshot: PlatformEventSnapshot,
         group_id: str = "",
     ) -> str:
-        target_group_id = _target_group_id(snapshot, group_id)
+        target_group_id = resolve_target_group_id(snapshot, group_id)
         if target_group_id is None:
             return ACTION_POLICY_USAGE
 
@@ -258,10 +263,10 @@ class CommandController:
         group_id: str = "",
         enabled: str = "",
     ) -> str:
-        if not enabled and _looks_like_action_toggle(group_id):
+        if not enabled and is_action_toggle_value(group_id):
             enabled = group_id
             group_id = ""
-        target_group_id = _target_group_id(snapshot, group_id)
+        target_group_id = resolve_target_group_id(snapshot, group_id)
         if target_group_id is None or not enabled:
             return ACTION_POLICY_USAGE
 
@@ -286,7 +291,7 @@ class CommandController:
         if not mode and group_id.strip().casefold() in ("strict", "audit"):
             mode = group_id
             group_id = ""
-        target_group_id = _target_group_id(snapshot, group_id)
+        target_group_id = resolve_target_group_id(snapshot, group_id)
         if target_group_id is None or not mode:
             return ACTION_POLICY_USAGE
 
@@ -324,7 +329,7 @@ class CommandController:
         if denial:
             return denial
 
-        group_key = _target_group_key(snapshot, group_id)
+        group_key = resolve_target_group_key(snapshot, group_id)
         if group_key is None:
             return GROUP_ENABLE_USAGE
         return await self._command_service.set_group_enabled(group_key, True)
@@ -343,7 +348,7 @@ class CommandController:
             if denial:
                 return denial
 
-        group_key = _target_group_key(snapshot, target_group_id)
+        group_key = resolve_target_group_key(snapshot, target_group_id)
         if group_key is None:
             return GROUP_DISABLE_USAGE
         return await self._command_service.set_group_enabled(group_key, False)
@@ -353,7 +358,7 @@ class CommandController:
         if denial:
             return denial
 
-        return self._command_service.format_group_status(_group_key(snapshot))
+        return self._command_service.format_group_status(build_group_key(snapshot))
 
     async def group_enable(self, snapshot: PlatformEventSnapshot) -> str:
         denial = self.command_denial(snapshot, allow_group_manager=False)
@@ -361,7 +366,7 @@ class CommandController:
             return denial
 
         return await self._command_service.set_group_enabled(
-            _group_key(snapshot),
+            build_group_key(snapshot),
             True,
         )
 
@@ -371,7 +376,7 @@ class CommandController:
             return denial
 
         return await self._command_service.set_group_enabled(
-            _group_key(snapshot),
+            build_group_key(snapshot),
             False,
         )
 
@@ -384,7 +389,7 @@ class CommandController:
         if denial:
             return denial
 
-        return await self._command_service.add_group_word(_group_key(snapshot), word)
+        return await self._command_service.add_group_word(build_group_key(snapshot), word)
 
     async def group_remove(
         self,
@@ -396,7 +401,7 @@ class CommandController:
             return denial
 
         return await self._command_service.remove_group_word(
-            _group_key(snapshot),
+            build_group_key(snapshot),
             word,
         )
 
@@ -405,7 +410,7 @@ class CommandController:
         if denial:
             return denial
 
-        return self._command_service.format_group_words(_group_key(snapshot))
+        return self._command_service.format_group_words(build_group_key(snapshot))
 
     async def group_admin_exempt_response(
         self,
@@ -433,7 +438,7 @@ class CommandController:
         snapshot: PlatformEventSnapshot,
         action: str,
     ) -> str:
-        group_key = _group_key(snapshot)
+        group_key = build_group_key(snapshot)
         normalized_action = action.strip().casefold()
         if normalized_action in ("", "status"):
             return self._command_service.format_group_admin_exempt_status(group_key)
@@ -448,48 +453,3 @@ class CommandController:
                 False,
             )
         return GROUP_ADMIN_EXEMPT_USAGE
-
-
-def _group_key(snapshot: PlatformEventSnapshot) -> str | None:
-    if not snapshot.platform or not snapshot.group_id:
-        return None
-    return f"{snapshot.platform}:{snapshot.group_id}"
-
-
-def _target_group_key(
-    snapshot: PlatformEventSnapshot,
-    group_id: str = "",
-) -> str | None:
-    target_group_id = _target_group_id(snapshot, group_id)
-    if target_group_id is None or not snapshot.platform:
-        return None
-    return f"{snapshot.platform}:{target_group_id}"
-
-
-def _target_group_id(
-    snapshot: PlatformEventSnapshot,
-    group_id: str = "",
-) -> str | None:
-    target_group_id = group_id.strip()
-    if not target_group_id:
-        if not snapshot.group_id:
-            return None
-        return snapshot.group_id
-    if not snapshot.platform or not is_valid_qq_group_id(target_group_id):
-        return None
-    return target_group_id
-
-
-def _looks_like_action_toggle(value: str) -> bool:
-    return value.strip().casefold() in (
-        "on",
-        "enable",
-        "enabled",
-        "true",
-        "1",
-        "off",
-        "disable",
-        "disabled",
-        "false",
-        "0",
-    )
