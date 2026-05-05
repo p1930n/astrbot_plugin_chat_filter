@@ -52,7 +52,6 @@ _install_astrbot_stubs()
 
 from astrbot_plugin_chat_filter.commands.command_auth import (  # noqa: E402
     COMMAND_PERMISSION_DENIED,
-    GROUP_ENABLE_PERMISSION_DENIED,
     CommandAuthorizer,
 )
 from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E402
@@ -116,7 +115,7 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
         self.assertEqual(service.admin_exempt_status_calls, ["qq:100"])
         self.assertEqual(service.admin_exempt_calls, [])
 
-    def test_group_enable_uses_stricter_global_admin_authorization(self) -> None:
+    def test_group_enable_allows_current_group_manager(self) -> None:
         manager_service = _CommandService()
         manager_controller = _controller(service=manager_service)
 
@@ -130,8 +129,8 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
             admin_controller.group_enable(_snapshot(sender_role="member"))
         )
 
-        self.assertEqual(manager_result, GROUP_ENABLE_PERMISSION_DENIED)
-        self.assertEqual(manager_service.group_enabled_calls, [])
+        self.assertEqual(manager_result, "Chat Filter enabled for this group.")
+        self.assertEqual(manager_service.group_enabled_calls, [("qq:100", True)])
         self.assertEqual(admin_result, "Chat Filter enabled for this group.")
         self.assertEqual(admin_service.group_enabled_calls, [("qq:100", True)])
 

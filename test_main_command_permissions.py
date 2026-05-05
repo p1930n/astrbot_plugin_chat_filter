@@ -116,11 +116,13 @@ _install_astrbot_stubs()
 
 from astrbot_plugin_chat_filter.commands.command_auth import CommandAuthorizer  # noqa: E402
 from astrbot_plugin_chat_filter.commands.command_controller import CommandController  # noqa: E402
+from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E402
+    TARGET_GROUP_PERMISSION_DENIED,
+)
 from astrbot_plugin_chat_filter.platform.command_gateway import CommandGateway  # noqa: E402
 from astrbot_plugin_chat_filter.main import (  # noqa: E402
     COMMAND_PERMISSION_DENIED,
     GROUP_ADMIN_EXEMPT_USAGE,
-    GROUP_ENABLE_PERMISSION_DENIED,
     ChatFilterPlugin,
 )
 from astrbot_plugin_chat_filter.platform.platform_action_factory import (  # noqa: E402
@@ -161,7 +163,7 @@ class MainCommandPermissionTests(unittest.TestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(plugin.command_service.status_calls, 1)
 
-    def test_group_enable_denies_group_admin_when_managers_disallowed(
+    def test_group_enable_allows_group_admin_for_current_group(
         self,
     ) -> None:
         command_service = _CommandService()
@@ -170,11 +172,11 @@ class MainCommandPermissionTests(unittest.TestCase):
 
         results = _collect_async_generator(plugin.cf_group_enable(event))
 
-        self.assertEqual(results, [GROUP_ENABLE_PERMISSION_DENIED])
+        self.assertEqual(results, ["Chat Filter enabled for this group."])
         self.assertTrue(event.stopped)
-        self.assertEqual(command_service.group_enabled_calls, [])
+        self.assertEqual(command_service.group_enabled_calls, [("qq:100", True)])
 
-    def test_group_enable_denies_group_owner_when_managers_disallowed(
+    def test_group_enable_allows_group_owner_for_current_group(
         self,
     ) -> None:
         command_service = _CommandService()
@@ -183,7 +185,51 @@ class MainCommandPermissionTests(unittest.TestCase):
 
         results = _collect_async_generator(plugin.cf_group_enable(event))
 
-        self.assertEqual(results, [GROUP_ENABLE_PERMISSION_DENIED])
+        self.assertEqual(results, ["Chat Filter enabled for this group."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [("qq:100", True)])
+
+    def test_enable_allows_group_admin_for_explicit_current_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin", group_id="100")
+
+        results = _collect_async_generator(plugin.cf_enable(event, "100"))
+
+        self.assertEqual(results, ["Chat Filter enabled for this group."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [("qq:100", True)])
+
+    def test_enable_denies_group_admin_for_other_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin", group_id="100")
+
+        results = _collect_async_generator(plugin.cf_enable(event, "200"))
+
+        self.assertEqual(results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [])
+
+    def test_disable_allows_group_admin_for_explicit_current_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin", group_id="100")
+
+        results = _collect_async_generator(plugin.cf_disable(event, "100"))
+
+        self.assertEqual(results, ["Chat Filter disabled for this group."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_enabled_calls, [("qq:100", False)])
+
+    def test_disable_denies_group_admin_for_other_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin", group_id="100")
+
+        results = _collect_async_generator(plugin.cf_disable(event, "200"))
+
+        self.assertEqual(results, [TARGET_GROUP_PERMISSION_DENIED])
         self.assertTrue(event.stopped)
         self.assertEqual(command_service.group_enabled_calls, [])
 
