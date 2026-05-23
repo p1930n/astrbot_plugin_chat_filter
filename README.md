@@ -36,8 +36,13 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf group disable` | 关闭当前群过滤。 |
 | `.cf group add <词>` | 给当前群添加自定义过滤词。 |
 | `.cf group add-to <群号> <词1,词2,...>` | 给指定群添加一个或多个自定义过滤词；仅 AstrBot 管理员可用。 |
-| `.cf group remove <词>` | 从当前群移除自定义过滤词。 |
+| `.cf group remove <词1,词2,...>` | 从当前群移除一个或多个自定义过滤词。 |
+| `.cf group remove-to <群号> <词1,词2,...>` | 从指定群移除一个或多个自定义过滤词；仅 AstrBot 管理员可用。 |
 | `.cf group list` | 查看当前群自定义词数量。 |
+| `.cf group bypass-add <词1,词2,...>` | 当前群绕过一个或多个全局普通词；仅 AstrBot 管理员可用。 |
+| `.cf group bypass-remove <词1,词2,...>` | 移除当前群的全局普通词绕过项；仅 AstrBot 管理员可用。 |
+| `.cf group bypass-list` | 查看当前群全局普通词绕过数量；仅 AstrBot 管理员可用。 |
+| `.cf group bypass-add-to <群号> <词1,词2,...>` | 指定群绕过一个或多个全局普通词；仅 AstrBot 管理员可用。 |
 | `.cf group admin-exempt status` | 查看当前群群主/管理员豁免开关。 |
 | `.cf group admin-exempt enable` | 开启当前群群主/管理员豁免。 |
 | `.cf group admin-exempt disable` | 关闭当前群群主/管理员豁免。 |
@@ -64,6 +69,8 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 默认情况下，命令允许 AstrBot 管理员、QQ群主或 QQ 群管理员使用。
 - `.cf enable [群号]` 和 `.cf disable [群号]` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改其它群时只允许 AstrBot 管理员。
 - `.cf group add-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group add <词>`。
+- `.cf group remove-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group remove <词>`。
+- `.cf group bypass-*` 会削弱全局普通词策略，只允许 AstrBot 管理员使用。
 - `.cf regex-skips` 只允许 AstrBot 管理员使用。
 - `.cf action ...` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改指定群号时只允许 AstrBot 管理员。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。
@@ -94,6 +101,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 主数据库：`data/astrbot_plugin_chat_filter/chat_filter.db`
 - 全局规则表：`global_rules`
 - 群策略、推送绑定、禁言策略和命中记录也存储在 SQLite。
+- 群级自定义词存储在 `group_words`；群级全局普通词绕过项存储在 `group_bypass_words`。
 - 群动作策略存储在 SQLite，scope 为 `platform + group_id`；未配置的群默认 `strict` 且禁言、撤回、转发全开。
 - 运行时 JSON 配置只保存功能开关和安全参数，不保存违禁词或正则规则。
 - 手动报表输出到插件数据目录下的 `reports/`。

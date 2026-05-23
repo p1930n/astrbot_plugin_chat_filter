@@ -50,6 +50,7 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
                     inherit_global=False,
                     admin_exempt_enabled=False,
                     custom_words=("alpha",),
+                    bypass_global_words=("global-alpha",),
                 )
             }
         )
@@ -66,6 +67,7 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
                 inherit_global=False,
                 admin_exempt_enabled=False,
                 custom_words=("alpha",),
+                bypass_global_words=("global-alpha",),
             ),
         )
         self.assertEqual(repository.saved_states, [state])
@@ -89,6 +91,7 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
                     inherit_global=False,
                     admin_exempt_enabled=True,
                     custom_words=("alpha", "beta"),
+                    bypass_global_words=("global-alpha",),
                 )
             }
         )
@@ -108,6 +111,7 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
                 inherit_global=False,
                 admin_exempt_enabled=False,
                 custom_words=("alpha", "beta"),
+                bypass_global_words=("global-alpha",),
             ),
         )
         self.assertEqual(repository.saved_states, [state])
@@ -134,7 +138,8 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
             "group=disabled, "
             "inherit_global=enabled, "
             "admin_exempt=enabled, "
-            "custom_words=0.",
+            "custom_words=0, "
+            "bypass_global_words=0.",
         )
 
     def test_format_group_status_reflects_explicit_policy(self) -> None:
@@ -146,6 +151,7 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
                         inherit_global=False,
                         admin_exempt_enabled=False,
                         custom_words=("alpha", "beta"),
+                        bypass_global_words=("global-alpha",),
                     )
                 }
             ),
@@ -157,7 +163,8 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
             "group=disabled, "
             "inherit_global=disabled, "
             "admin_exempt=disabled, "
-            "custom_words=2.",
+            "custom_words=2, "
+            "bypass_global_words=1.",
         )
 
     def test_group_status_and_admin_exempt_status_require_group_key(self) -> None:
@@ -234,6 +241,55 @@ class CommandServiceGroupPolicyTests(unittest.TestCase):
             repository.save_snapshots,
             [("alpha",), ("alpha", "beta")],
         )
+
+    def test_group_bypass_word_updates_preserve_custom_words(self) -> None:
+        state = RuntimeState(
+            groups={
+                "qq:100": GroupPolicy(
+                    enabled=True,
+                    custom_words=("local",),
+                    bypass_global_words=("global-alpha",),
+                )
+            }
+        )
+        repository = _Repository()
+        service = _service(state=state, repository=repository)
+
+        add_result = _run(service.add_group_bypass_word("qq:100", "global-beta"))
+        remove_result = _run(
+            service.remove_group_bypass_word("qq:100", "global-alpha")
+        )
+
+        self.assertEqual(add_result, "Group bypass word added.")
+        self.assertEqual(remove_result, "Group bypass word removed.")
+        self.assertEqual(
+            state.groups["qq:100"],
+            GroupPolicy(
+                enabled=True,
+                custom_words=("local",),
+                bypass_global_words=("global-beta",),
+            ),
+        )
+        self.assertEqual(repository.saved_states, [state, state])
+
+    def test_group_bypass_word_reports_duplicates_limits_and_missing(self) -> None:
+        settings = ChatFilterSettings.from_config({"max_word_count": 1})
+        service = _service(
+            settings=settings,
+            state=RuntimeState(
+                groups={
+                    "qq:100": GroupPolicy(bypass_global_words=("global-alpha",))
+                }
+            ),
+        )
+
+        duplicate = _run(service.add_group_bypass_word("qq:100", "global-alpha"))
+        limit = _run(service.add_group_bypass_word("qq:100", "global-beta"))
+        missing = _run(service.remove_group_bypass_word("qq:100", "missing"))
+
+        self.assertEqual(duplicate, "Group bypass word already exists.")
+        self.assertEqual(limit, "Group bypass word limit reached.")
+        self.assertEqual(missing, "Group bypass word not found.")
 
 
 def _service(

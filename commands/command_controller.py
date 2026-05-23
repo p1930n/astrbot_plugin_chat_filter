@@ -22,6 +22,13 @@ GROUP_ADMIN_EXEMPT_USAGE = (
 GROUP_ENABLE_USAGE = "Usage: .cf enable [group id]"
 GROUP_DISABLE_USAGE = "Usage: .cf disable [group id]"
 GROUP_ADD_TO_USAGE = "Usage: .cf group add-to <group id> <word>[,<word>...]"
+GROUP_REMOVE_USAGE = "Usage: .cf group remove <word>[,<word>...]"
+GROUP_REMOVE_TO_USAGE = "Usage: .cf group remove-to <group id> <word>[,<word>...]"
+GROUP_BYPASS_ADD_USAGE = "Usage: .cf group bypass-add <word>[,<word>...]"
+GROUP_BYPASS_REMOVE_USAGE = "Usage: .cf group bypass-remove <word>[,<word>...]"
+GROUP_BYPASS_ADD_TO_USAGE = (
+    "Usage: .cf group bypass-add-to <group id> <word>[,<word>...]"
+)
 TARGET_GROUP_PERMISSION_DENIED = (
     "Chat Filter target group permission denied: "
     "requires AstrBot admin permission."
@@ -404,12 +411,14 @@ class CommandController:
             return GROUP_ADD_TO_USAGE
         if len(words) == 1:
             return await self._command_service.add_group_word(group_key, words[0])
-        return await self._add_group_words(group_key, words)
+        return await self._add_group_words(group_key, words, bypass=False)
 
     async def _add_group_words(
         self,
         group_key: str,
         words: tuple[str, ...],
+        *,
+        bypass: bool,
     ) -> str:
         counts = {
             "added": 0,
@@ -419,19 +428,33 @@ class CommandController:
             "failed": 0,
         }
         for word in words:
-            result = await self._command_service.add_group_word(group_key, word)
-            if result == "Group word added.":
+            if bypass:
+                result = await self._command_service.add_group_bypass_word(
+                    group_key,
+                    word,
+                )
+                added_text = "Group bypass word added."
+                exists_text = "Group bypass word already exists."
+                limit_text = "Group bypass word limit reached."
+            else:
+                result = await self._command_service.add_group_word(group_key, word)
+                added_text = "Group word added."
+                exists_text = "Group word already exists."
+                limit_text = "Group word limit reached."
+
+            if result == added_text:
                 counts["added"] += 1
-            elif result == "Group word already exists.":
+            elif result == exists_text:
                 counts["exists"] += 1
             elif result == "Invalid word length.":
                 counts["invalid"] += 1
-            elif result == "Group word limit reached.":
+            elif result == limit_text:
                 counts["limit"] += 1
             else:
                 counts["failed"] += 1
+        noun = "bypass words" if bypass else "words"
         return (
-            "Group words added: "
+            f"Group {noun} added: "
             f"added={counts['added']}, "
             f"exists={counts['exists']}, "
             f"invalid={counts['invalid']}, "
@@ -448,9 +471,138 @@ class CommandController:
         if denial:
             return denial
 
-        return await self._command_service.remove_group_word(
-            build_group_key(snapshot),
-            word,
+        group_key = build_group_key(snapshot)
+        words = _split_group_words(word)
+        if group_key is None:
+            return "This command must be used in a group chat."
+        if not words:
+            return GROUP_REMOVE_USAGE
+        if len(words) == 1:
+            return await self._command_service.remove_group_word(group_key, words[0])
+        return await self._remove_group_words(group_key, words, bypass=False)
+
+    async def group_remove_to(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        word: str = "",
+    ) -> str:
+        if not self.check_global_permission(snapshot):
+            return TARGET_GROUP_PERMISSION_DENIED
+
+        group_key = resolve_target_group_key(snapshot, group_id)
+        words = _split_group_words(word)
+        if group_key is None or not words:
+            return GROUP_REMOVE_TO_USAGE
+        if len(words) == 1:
+            return await self._command_service.remove_group_word(group_key, words[0])
+        return await self._remove_group_words(group_key, words, bypass=False)
+
+    async def group_bypass_add(
+        self,
+        snapshot: PlatformEventSnapshot,
+        word: str = "",
+    ) -> str:
+        if not self.check_global_permission(snapshot):
+            return TARGET_GROUP_PERMISSION_DENIED
+
+        group_key = build_group_key(snapshot)
+        words = _split_group_words(word)
+        if group_key is None:
+            return "This command must be used in a group chat."
+        if not words:
+            return GROUP_BYPASS_ADD_USAGE
+        if len(words) == 1:
+            return await self._command_service.add_group_bypass_word(
+                group_key,
+                words[0],
+            )
+        return await self._add_group_words(group_key, words, bypass=True)
+
+    async def group_bypass_add_to(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        word: str = "",
+    ) -> str:
+        if not self.check_global_permission(snapshot):
+            return TARGET_GROUP_PERMISSION_DENIED
+
+        group_key = resolve_target_group_key(snapshot, group_id)
+        words = _split_group_words(word)
+        if group_key is None or not words:
+            return GROUP_BYPASS_ADD_TO_USAGE
+        if len(words) == 1:
+            return await self._command_service.add_group_bypass_word(
+                group_key,
+                words[0],
+            )
+        return await self._add_group_words(group_key, words, bypass=True)
+
+    async def group_bypass_remove(
+        self,
+        snapshot: PlatformEventSnapshot,
+        word: str = "",
+    ) -> str:
+        if not self.check_global_permission(snapshot):
+            return TARGET_GROUP_PERMISSION_DENIED
+
+        group_key = build_group_key(snapshot)
+        words = _split_group_words(word)
+        if group_key is None:
+            return "This command must be used in a group chat."
+        if not words:
+            return GROUP_BYPASS_REMOVE_USAGE
+        if len(words) == 1:
+            return await self._command_service.remove_group_bypass_word(
+                group_key,
+                words[0],
+            )
+        return await self._remove_group_words(group_key, words, bypass=True)
+
+    async def group_bypass_list(self, snapshot: PlatformEventSnapshot) -> str:
+        if not self.check_global_permission(snapshot):
+            return TARGET_GROUP_PERMISSION_DENIED
+        return self._command_service.format_group_bypass_words(
+            build_group_key(snapshot)
+        )
+
+    async def _remove_group_words(
+        self,
+        group_key: str,
+        words: tuple[str, ...],
+        *,
+        bypass: bool,
+    ) -> str:
+        counts = {"removed": 0, "not_found": 0, "failed": 0}
+        for word in words:
+            if bypass:
+                result = await self._command_service.remove_group_bypass_word(
+                    group_key,
+                    word,
+                )
+                removed_text = "Group bypass word removed."
+                not_found_text = "Group bypass word not found."
+            else:
+                result = await self._command_service.remove_group_word(
+                    group_key,
+                    word,
+                )
+                removed_text = "Group word removed."
+                not_found_text = "Group word not found."
+
+            if result == removed_text:
+                counts["removed"] += 1
+            elif result == not_found_text:
+                counts["not_found"] += 1
+            else:
+                counts["failed"] += 1
+        noun = "bypass words" if bypass else "words"
+        return (
+            f"Group {noun} removed: "
+            f"removed={counts['removed']}, "
+            f"not_found={counts['not_found']}, "
+            f"failed={counts['failed']}."
         )
 
     async def group_list(self, snapshot: PlatformEventSnapshot) -> str:

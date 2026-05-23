@@ -30,6 +30,7 @@ class GroupPolicy:
     inherit_global: bool = True
     admin_exempt_enabled: bool = True
     custom_words: tuple[str, ...] = field(default_factory=tuple)
+    bypass_global_words: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(slots=True)

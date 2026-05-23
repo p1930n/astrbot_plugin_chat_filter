@@ -31,6 +31,7 @@ class ChatFilterMatcher:
         words = self._effective_words(
             rule_snapshot.global_words,
             policy.custom_words,
+            policy.bypass_global_words,
             policy.inherit_global,
         )
         regex_rules = rule_snapshot.global_regex_rules if policy.inherit_global else ()
@@ -106,11 +107,15 @@ class ChatFilterMatcher:
     def _effective_words(
         global_words: tuple[str, ...],
         custom_words: tuple[str, ...],
+        bypass_global_words: tuple[str, ...],
         inherit_global: bool,
     ) -> tuple[str, ...]:
         if not inherit_global:
             return custom_words
-        return global_words + custom_words
+        if not bypass_global_words:
+            return global_words + custom_words
+        bypass_set = set(bypass_global_words)
+        return tuple(word for word in global_words if word not in bypass_set) + custom_words
 
 
 def _has_gapped_word_match(text: str, word: str, max_gap: int) -> bool:

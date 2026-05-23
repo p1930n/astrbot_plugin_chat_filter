@@ -262,6 +262,74 @@ class MainCommandPermissionTests(unittest.TestCase):
             [("qq:200", "blocked-word")],
         )
 
+    def test_group_remove_to_denies_group_admin_for_target_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin", group_id="100")
+
+        results = _collect_async_generator(
+            plugin.cf_group_remove_to(event, "200", "blocked-word")
+        )
+
+        self.assertEqual(results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_word_remove_calls, [])
+
+    def test_group_remove_to_allows_astrbot_admin_for_target_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=("200",), command_service=command_service)
+        event = _event(sender_id="200", role="member", group_id="100")
+
+        results = _collect_async_generator(
+            plugin.cf_group_remove_to(event, "200", "blocked-word")
+        )
+
+        self.assertEqual(results, ["Group word removed."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(
+            command_service.group_word_remove_calls,
+            [("qq:200", "blocked-word")],
+        )
+
+    def test_group_bypass_commands_require_astrbot_admin(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="admin", group_id="100")
+
+        add_results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "global-word")
+        )
+        remove_results = _collect_async_generator(
+            plugin.cf_group_bypass_remove(event, "global-word")
+        )
+        list_results = _collect_async_generator(plugin.cf_group_bypass_list(event))
+        add_to_results = _collect_async_generator(
+            plugin.cf_group_bypass_add_to(event, "200", "global-word")
+        )
+
+        self.assertEqual(add_results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertEqual(remove_results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertEqual(list_results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertEqual(add_to_results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(command_service.group_bypass_word_calls, [])
+
+    def test_group_bypass_add_allows_astrbot_admin_for_current_group(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=("200",), command_service=command_service)
+        event = _event(sender_id="200", role="member", group_id="100")
+
+        results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "global-word")
+        )
+
+        self.assertEqual(results, ["Group bypass word added."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(
+            command_service.group_bypass_word_calls,
+            [("qq:100", "global-word")],
+        )
+
     def test_group_enable_allows_astrbot_admin_when_managers_disallowed(
         self,
     ) -> None:
@@ -392,6 +460,9 @@ class _CommandService:
         self.status_calls = 0
         self.group_enabled_calls: list[tuple[str | None, bool]] = []
         self.group_word_calls: list[tuple[str | None, str]] = []
+        self.group_word_remove_calls: list[tuple[str | None, str]] = []
+        self.group_bypass_word_calls: list[tuple[str | None, str]] = []
+        self.group_bypass_word_remove_calls: list[tuple[str | None, str]] = []
         self.admin_exempt_calls: list[tuple[str | None, bool]] = []
         self.admin_exempt_status_calls: list[str | None] = []
 
@@ -408,6 +479,30 @@ class _CommandService:
     async def add_group_word(self, group_key: str | None, word: str) -> str:
         self.group_word_calls.append((group_key, word))
         return "Group word added."
+
+    async def remove_group_word(self, group_key: str | None, word: str) -> str:
+        self.group_word_remove_calls.append((group_key, word))
+        return "Group word removed."
+
+    async def add_group_bypass_word(
+        self,
+        group_key: str | None,
+        word: str,
+    ) -> str:
+        self.group_bypass_word_calls.append((group_key, word))
+        return "Group bypass word added."
+
+    async def remove_group_bypass_word(
+        self,
+        group_key: str | None,
+        word: str,
+    ) -> str:
+        self.group_bypass_word_remove_calls.append((group_key, word))
+        return "Group bypass word removed."
+
+    def format_group_bypass_words(self, group_key: str | None) -> str:
+        _ = group_key
+        return "Group bypass word count: 1."
 
     async def set_group_admin_exempt_enabled(
         self,

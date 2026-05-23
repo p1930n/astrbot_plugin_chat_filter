@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-CURRENT_SCHEMA_VERSION = 5
+CURRENT_SCHEMA_VERSION = 6
 
 
 class RepositorySchemaError(RuntimeError):
@@ -148,7 +148,7 @@ V4_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
-REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+V5_REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
     **V4_REQUIRED_TABLE_COLUMNS,
     "violation_outbox": (
         "id",
@@ -177,6 +177,12 @@ REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 
+REQUIRED_TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
+    **V5_REQUIRED_TABLE_COLUMNS,
+    "group_bypass_words": ("group_key", "word", "position", "created_at"),
+}
+
+
 def ensure_schema(connection: sqlite3.Connection) -> None:
     current_version = _schema_version(connection)
     if current_version > CURRENT_SCHEMA_VERSION:
@@ -199,6 +205,8 @@ def ensure_schema(connection: sqlite3.Connection) -> None:
         _validate_required_schema(connection, V3_REQUIRED_TABLE_COLUMNS)
     elif current_version == 4:
         _validate_required_schema(connection, V4_REQUIRED_TABLE_COLUMNS)
+    elif current_version == 5:
+        _validate_required_schema(connection, V5_REQUIRED_TABLE_COLUMNS)
 
     _create_schema_objects(connection)
     _migrate_schema_objects(connection, current_version)
@@ -225,6 +233,17 @@ def _create_schema_objects(connection: sqlite3.Connection) -> None:
         );
 
         CREATE TABLE IF NOT EXISTS group_words (
+            group_key TEXT NOT NULL,
+            word TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (group_key, word),
+            FOREIGN KEY (group_key)
+                REFERENCES group_policies(group_key)
+                ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS group_bypass_words (
             group_key TEXT NOT NULL,
             word TEXT NOT NULL,
             position INTEGER NOT NULL DEFAULT 0,

@@ -58,8 +58,10 @@ from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E4
     GLOBAL_DIAGNOSTICS_PERMISSION_DENIED,
     GROUP_ADD_TO_USAGE,
     GROUP_ADMIN_EXEMPT_USAGE,
+    GROUP_BYPASS_ADD_TO_USAGE,
     GROUP_DISABLE_USAGE,
     GROUP_ENABLE_USAGE,
+    GROUP_REMOVE_TO_USAGE,
     TARGET_GROUP_PERMISSION_DENIED,
     CommandController,
 )
@@ -416,6 +418,123 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
             ],
         )
 
+    def test_group_remove_to_requires_global_admin_and_accepts_batch(self) -> None:
+        manager_service = _CommandService()
+        manager_controller = _controller(service=manager_service)
+
+        manager_result = _run(
+            manager_controller.group_remove_to(
+                _snapshot(sender_role="admin"),
+                "300",
+                "alpha,beta",
+            )
+        )
+
+        admin_service = _CommandService()
+        admin_controller = _controller(service=admin_service, admins=("200",))
+        admin_result = _run(
+            admin_controller.group_remove_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "alpha,beta",
+            )
+        )
+        missing_word = _run(
+            admin_controller.group_remove_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "",
+            )
+        )
+
+        self.assertEqual(manager_result, TARGET_GROUP_PERMISSION_DENIED)
+        self.assertEqual(manager_service.group_word_remove_calls, [])
+        self.assertEqual(
+            admin_result,
+            "Group words removed: removed=2, not_found=0, failed=0.",
+        )
+        self.assertEqual(missing_word, GROUP_REMOVE_TO_USAGE)
+        self.assertEqual(
+            admin_service.group_word_remove_calls,
+            [("qq:300", "alpha"), ("qq:300", "beta")],
+        )
+
+    def test_group_bypass_commands_require_global_admin(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service)
+
+        add_result = _run(
+            controller.group_bypass_add(_snapshot(sender_role="admin"), "global-word")
+        )
+        remove_result = _run(
+            controller.group_bypass_remove(
+                _snapshot(sender_role="admin"),
+                "global-word",
+            )
+        )
+        list_result = _run(controller.group_bypass_list(_snapshot(sender_role="admin")))
+
+        self.assertEqual(add_result, TARGET_GROUP_PERMISSION_DENIED)
+        self.assertEqual(remove_result, TARGET_GROUP_PERMISSION_DENIED)
+        self.assertEqual(list_result, TARGET_GROUP_PERMISSION_DENIED)
+        self.assertEqual(service.group_bypass_word_calls, [])
+        self.assertEqual(service.group_bypass_word_remove_calls, [])
+
+    def test_group_bypass_add_to_accepts_comma_separated_words(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        result = _run(
+            controller.group_bypass_add_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "alpha,beta，gamma",
+            )
+        )
+        missing_word = _run(
+            controller.group_bypass_add_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "",
+            )
+        )
+
+        self.assertEqual(
+            result,
+            "Group bypass words added: "
+            "added=3, exists=0, invalid=0, limit=0, failed=0.",
+        )
+        self.assertEqual(missing_word, GROUP_BYPASS_ADD_TO_USAGE)
+        self.assertEqual(
+            service.group_bypass_word_calls,
+            [("qq:300", "alpha"), ("qq:300", "beta"), ("qq:300", "gamma")],
+        )
+
+    def test_group_bypass_remove_and_list_use_current_group(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        remove_result = _run(
+            controller.group_bypass_remove(
+                _snapshot(sender_role="member"),
+                "alpha,beta",
+            )
+        )
+        list_result = _run(
+            controller.group_bypass_list(_snapshot(sender_role="member"))
+        )
+
+        self.assertEqual(
+            remove_result,
+            "Group bypass words removed: removed=2, not_found=0, failed=0.",
+        )
+        self.assertEqual(list_result, "Group bypass word count: 2.")
+        self.assertEqual(
+            service.group_bypass_word_remove_calls,
+            [("qq:100", "alpha"), ("qq:100", "beta")],
+        )
+        self.assertEqual(service.group_bypass_list_calls, ["qq:100"])
+
 
 class CommandGatewayAdminExemptTests(unittest.TestCase):
     def test_gateway_stops_event_and_dehydrates_snapshot_for_admin_exempt(self) -> None:
@@ -528,6 +647,32 @@ class CommandGatewayAdminExemptTests(unittest.TestCase):
         self.assertTrue(event.stopped)
         self.assertEqual(len(controller.snapshots), 1)
 
+    def test_gateway_passes_group_remove_and_bypass_commands_to_controller(self) -> None:
+        controller = _GatewayController()
+        gateway = CommandGateway(controller, _PlatformActionFactory())
+        event = _Event(sender_id="200", sender_role="admin")
+
+        remove_to = _run(gateway.group_remove_to(event, "300", "blocked-word"))
+        bypass_add = _run(gateway.group_bypass_add(event, "global-word"))
+        bypass_remove = _run(gateway.group_bypass_remove(event, "global-word"))
+        bypass_list = _run(gateway.group_bypass_list(event))
+        bypass_add_to = _run(
+            gateway.group_bypass_add_to(event, "300", "global-word")
+        )
+
+        self.assertEqual(remove_to, "group-remove-to:300:blocked-word:200:admin")
+        self.assertEqual(bypass_add, "group-bypass-add:global-word:200:admin")
+        self.assertEqual(
+            bypass_remove,
+            "group-bypass-remove:global-word:200:admin",
+        )
+        self.assertEqual(bypass_list, "group-bypass-list:200:admin")
+        self.assertEqual(
+            bypass_add_to,
+            "group-bypass-add-to:300:global-word:200:admin",
+        )
+        self.assertTrue(event.stopped)
+
 
 def _controller(
     *,
@@ -569,6 +714,10 @@ class _CommandService:
         self.action_mode_calls: list[tuple[str, str, str, str]] = []
         self.action_overview_calls: list[tuple[str, str]] = []
         self.group_word_calls: list[tuple[str | None, str]] = []
+        self.group_word_remove_calls: list[tuple[str | None, str]] = []
+        self.group_bypass_word_calls: list[tuple[str | None, str]] = []
+        self.group_bypass_word_remove_calls: list[tuple[str | None, str]] = []
+        self.group_bypass_list_calls: list[str | None] = []
         self.group_word_responses = group_word_responses or []
 
     def format_group_admin_exempt_status(self, group_key: str | None) -> str:
@@ -596,6 +745,30 @@ class _CommandService:
         if self.group_word_responses:
             return self.group_word_responses.pop(0)
         return "Group word added."
+
+    async def remove_group_word(self, group_key: str | None, word: str) -> str:
+        self.group_word_remove_calls.append((group_key, word))
+        return "Group word removed."
+
+    async def add_group_bypass_word(
+        self,
+        group_key: str | None,
+        word: str,
+    ) -> str:
+        self.group_bypass_word_calls.append((group_key, word))
+        return "Group bypass word added."
+
+    async def remove_group_bypass_word(
+        self,
+        group_key: str | None,
+        word: str,
+    ) -> str:
+        self.group_bypass_word_remove_calls.append((group_key, word))
+        return "Group bypass word removed."
+
+    def format_group_bypass_words(self, group_key: str | None) -> str:
+        self.group_bypass_list_calls.append(group_key)
+        return "Group bypass word count: 2."
 
     async def format_overview(self, platform: str, output_format: str = "") -> str:
         self.overview_calls.append((platform, output_format))
@@ -741,6 +914,50 @@ class _GatewayController:
         self.snapshots.append(snapshot)
         return (
             f"group-add-to:{group_id}:{word}:"
+            f"{snapshot.sender_id}:{snapshot.sender_role}"
+        )
+
+    async def group_remove_to(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        word: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return (
+            f"group-remove-to:{group_id}:{word}:"
+            f"{snapshot.sender_id}:{snapshot.sender_role}"
+        )
+
+    async def group_bypass_add(
+        self,
+        snapshot: PlatformEventSnapshot,
+        word: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return f"group-bypass-add:{word}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def group_bypass_remove(
+        self,
+        snapshot: PlatformEventSnapshot,
+        word: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return f"group-bypass-remove:{word}:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def group_bypass_list(self, snapshot: PlatformEventSnapshot) -> str:
+        self.snapshots.append(snapshot)
+        return f"group-bypass-list:{snapshot.sender_id}:{snapshot.sender_role}"
+
+    async def group_bypass_add_to(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        word: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return (
+            f"group-bypass-add-to:{group_id}:{word}:"
             f"{snapshot.sender_id}:{snapshot.sender_role}"
         )
 

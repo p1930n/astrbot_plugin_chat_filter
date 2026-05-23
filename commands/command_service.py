@@ -122,6 +122,25 @@ class ChatFilterCommandService:
     def format_group_words(self, group_key: str | None) -> str:
         return self._group_policy_commands.format_group_words(group_key)
 
+    async def add_group_bypass_word(self, group_key: str | None, word: str) -> str:
+        return await self._group_policy_commands.add_group_bypass_word(
+            group_key,
+            word,
+        )
+
+    async def remove_group_bypass_word(
+        self,
+        group_key: str | None,
+        word: str,
+    ) -> str:
+        return await self._group_policy_commands.remove_group_bypass_word(
+            group_key,
+            word,
+        )
+
+    def format_group_bypass_words(self, group_key: str | None) -> str:
+        return self._group_policy_commands.format_group_bypass_words(group_key)
+
     async def add_push_binding(
         self,
         snapshot: PlatformEventSnapshot,
