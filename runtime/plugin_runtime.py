@@ -14,12 +14,15 @@ from .message_filter_service import MessageFilterService
 from ..domain.models import RuntimeState
 from ..platform.platform_action_factory import PlatformActionFactory
 from ..platform.platform_actions import PlatformActions
+from ..platform.group_member_role_resolver import GroupMemberRoleResolver
 from ..services.report_service import ViolationReportService
 from ..persistence.repository import ChatFilterRepository, default_data_root
 from ..domain.rule_snapshot import RuleSnapshot
 from ..domain.settings import ChatFilterSettings
 from ..services.violation_actions import ViolationActionExecutor
 from ..services.violation_records import ViolationRecorder
+from .metrics import ChatFilterMetrics
+from .violation_job_queue import ViolationJobQueue
 
 
 class ChatFilterRuntimeContext(Protocol):
@@ -47,15 +50,18 @@ class ChatFilterRuntime:
     state: RuntimeState
     command_service: ChatFilterCommandService
     matcher: ChatFilterMatcher
+    metrics: ChatFilterMetrics
     platform_actions: PlatformActions | None
     violation_action_executor: ViolationActionExecutor
     violation_recorder: ViolationRecorder
+    violation_job_queue: ViolationJobQueue
     message_filter_service: MessageFilterService
     report_service: ViolationReportService
     file_probe_service: FileProbeService
     command_authorizer: CommandAuthorizer
     command_controller: CommandController
     platform_action_factory: PlatformActionFactory
+    group_member_role_resolver: GroupMemberRoleResolver
     command_gateway: CommandGateway
 
 
@@ -79,6 +85,7 @@ def build_chat_filter_runtime(
         settings=settings,
     )
     state = load_runtime_state(repository, logger)
+    metrics = ChatFilterMetrics()
     command_service = ChatFilterCommandService(
         repository,
         state,
@@ -93,15 +100,24 @@ def build_chat_filter_runtime(
         default_mute_duration_seconds=settings.mute_duration_seconds,
         default_mute_escalation_multiplier=settings.mute_escalation_multiplier,
         default_mute_escalation_reset_seconds=settings.mute_escalation_reset_seconds,
+        metrics=metrics,
     )
-    violation_recorder = ViolationRecorder(repository, logger)
+    violation_recorder = ViolationRecorder(repository, logger, metrics)
+    violation_job_queue = ViolationJobQueue(
+        settings=settings,
+        repository=repository,
+        violation_recorder=violation_recorder,
+        violation_action_executor=violation_action_executor,
+        metrics=metrics,
+        logger=logger,
+    )
     message_filter_service = MessageFilterService(
         matcher=matcher,
         settings=settings,
         state=state,
         rule_snapshot=rule_snapshot,
-        violation_recorder=violation_recorder,
-        violation_action_executor=violation_action_executor,
+        violation_job_queue=violation_job_queue,
+        metrics=metrics,
         logger=logger,
     )
     report_service = ViolationReportService(
@@ -120,14 +136,17 @@ def build_chat_filter_runtime(
         report_service,
         file_probe_service,
         command_authorizer,
+        metrics,
     )
     platform_action_factory = PlatformActionFactory(
         platform_actions_provider or (lambda: platform_actions),
         logger=logger,
     )
+    group_member_role_resolver = GroupMemberRoleResolver(logger=logger)
     command_gateway = CommandGateway(
         command_controller,
         platform_action_factory,
+        group_member_role_resolver,
     )
     return ChatFilterRuntime(
         settings=settings,
@@ -137,14 +156,17 @@ def build_chat_filter_runtime(
         state=state,
         command_service=command_service,
         matcher=matcher,
+        metrics=metrics,
         platform_actions=platform_actions,
         violation_action_executor=violation_action_executor,
         violation_recorder=violation_recorder,
+        violation_job_queue=violation_job_queue,
         message_filter_service=message_filter_service,
         report_service=report_service,
         file_probe_service=file_probe_service,
         command_authorizer=command_authorizer,
         command_controller=command_controller,
         platform_action_factory=platform_action_factory,
+        group_member_role_resolver=group_member_role_resolver,
         command_gateway=command_gateway,
     )

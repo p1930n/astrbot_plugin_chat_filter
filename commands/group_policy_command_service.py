@@ -26,7 +26,8 @@ class GroupPolicyCommandService:
             f"group={'enabled' if policy.enabled is True else 'disabled'}, "
             f"inherit_global={'enabled' if policy.inherit_global else 'disabled'}, "
             f"admin_exempt={'enabled' if policy.admin_exempt_enabled else 'disabled'}, "
-            f"custom_words={len(policy.custom_words)}."
+            f"custom_words={len(policy.custom_words)}, "
+            f"bypass_global_words={len(policy.bypass_global_words)}."
         )
 
     async def set_group_enabled(self, group_key: str | None, enabled: bool) -> str:
@@ -98,9 +99,51 @@ class GroupPolicyCommandService:
             return "Chat Filter state update failed."
         return "Group word removed."
 
+    async def add_group_bypass_word(self, group_key: str | None, word: str) -> str:
+        if group_key is None:
+            return "This command must be used in a group chat."
+
+        cleaned = validate_single_word(
+            word,
+            max_length=self._settings.max_word_length,
+        )
+        if cleaned is None:
+            return "Invalid word length."
+
+        result = await self._runtime.add_group_bypass_word(
+            group_key,
+            cleaned,
+            self._settings.max_word_count,
+        )
+        if result == "exists":
+            return "Group bypass word already exists."
+        if result == "limit":
+            return "Group bypass word limit reached."
+        if result == "save_failed":
+            return "Chat Filter state update failed."
+        return "Group bypass word added."
+
+    async def remove_group_bypass_word(self, group_key: str | None, word: str) -> str:
+        if group_key is None:
+            return "This command must be used in a group chat."
+
+        result = await self._runtime.remove_group_bypass_word(group_key, word)
+        if result == "not_found":
+            return "Group bypass word not found."
+        if result == "save_failed":
+            return "Chat Filter state update failed."
+        return "Group bypass word removed."
+
     def format_group_words(self, group_key: str | None) -> str:
         if group_key is None:
             return "This command must be used in a group chat."
 
         policy = self._state.get_group_policy(group_key)
         return f"Group custom word count: {len(policy.custom_words)}."
+
+    def format_group_bypass_words(self, group_key: str | None) -> str:
+        if group_key is None:
+            return "This command must be used in a group chat."
+
+        policy = self._state.get_group_policy(group_key)
+        return f"Group bypass word count: {len(policy.bypass_global_words)}."

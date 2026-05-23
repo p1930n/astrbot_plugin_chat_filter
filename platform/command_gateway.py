@@ -7,6 +7,8 @@ from .astrbot_event_adapter import (
     extract_onebot_action_client,
 )
 from ..commands.command_controller import CommandController
+from ..domain.models import PlatformEventSnapshot
+from .group_member_role_resolver import GroupMemberRoleResolver
 from .platform_actions import PlatformActions
 from .platform_action_factory import PlatformActionFactory
 
@@ -16,9 +18,13 @@ class CommandGateway:
         self,
         controller: CommandController,
         platform_action_factory: PlatformActionFactory,
+        group_member_role_resolver: GroupMemberRoleResolver | None = None,
     ) -> None:
         self._controller = controller
         self._platform_action_factory = platform_action_factory
+        self._group_member_role_resolver = (
+            group_member_role_resolver or GroupMemberRoleResolver()
+        )
 
     def command_result(self, event: AstrMessageEvent, text: str):
         event.stop_event()
@@ -62,7 +68,7 @@ class CommandGateway:
         action: str,
     ) -> str:
         return await self._controller.group_admin_exempt_response(
-            dehydrate_event_snapshot(event),
+            await self._snapshot_for_event(event),
             action,
         )
 
@@ -72,7 +78,7 @@ class CommandGateway:
         action: str,
     ) -> str:
         return await self._controller.group_admin_exempt_text(
-            dehydrate_event_snapshot(event),
+            await self._snapshot_for_event(event),
             action,
         )
 
@@ -85,7 +91,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.bind(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 listening_group,
                 push_group,
             ),
@@ -100,7 +106,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.mute(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 group_id,
                 seconds,
             ),
@@ -116,7 +122,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.mute_stack(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 group_id,
                 multiplier,
                 reset_seconds,
@@ -124,11 +130,12 @@ class CommandGateway:
         )
 
     async def probe(self, event: AstrMessageEvent):
-        platform_actions = self.platform_actions_for_event(event)
+        snapshot = await self._snapshot_for_event(event)
+        platform_actions = self._platform_actions_for_snapshot(snapshot, event)
         return self.command_result(
             event,
             await self._controller.probe(
-                dehydrate_event_snapshot(event),
+                snapshot,
                 platform_actions,
             ),
         )
@@ -138,11 +145,12 @@ class CommandGateway:
         event: AstrMessageEvent,
         target_group: str = "",
     ):
-        platform_actions = self.platform_actions_for_event(event)
+        snapshot = await self._snapshot_for_event(event)
+        platform_actions = self._platform_actions_for_snapshot(snapshot, event)
         return self.command_result(
             event,
             await self._controller.forward_probe(
-                dehydrate_event_snapshot(event),
+                snapshot,
                 platform_actions,
                 target_group,
             ),
@@ -157,7 +165,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.report_dry_run(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 listening_group,
                 days,
             ),
@@ -168,11 +176,12 @@ class CommandGateway:
         event: AstrMessageEvent,
         target_group: str = "",
     ):
-        platform_actions = self.platform_actions_for_event(event)
+        snapshot = await self._snapshot_for_event(event)
+        platform_actions = self._platform_actions_for_snapshot(snapshot, event)
         return self.command_result(
             event,
             await self._controller.file_probe(
-                dehydrate_event_snapshot(event),
+                snapshot,
                 platform_actions,
                 target_group,
             ),
@@ -181,20 +190,20 @@ class CommandGateway:
     async def help(self, event: AstrMessageEvent):
         return self.command_result(
             event,
-            await self._controller.help(dehydrate_event_snapshot(event)),
+            await self._controller.help(await self._snapshot_for_event(event)),
         )
 
     async def status(self, event: AstrMessageEvent):
         return self.command_result(
             event,
-            await self._controller.status(dehydrate_event_snapshot(event)),
+            await self._controller.status(await self._snapshot_for_event(event)),
         )
 
     async def overview(self, event: AstrMessageEvent, output_format: str = ""):
         return self.command_result(
             event,
             await self._controller.overview(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 output_format,
             ),
         )
@@ -203,9 +212,15 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.regex_skips(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 limit,
             ),
+        )
+
+    async def metrics(self, event: AstrMessageEvent):
+        return self.command_result(
+            event,
+            await self._controller.metrics(await self._snapshot_for_event(event)),
         )
 
     async def action_status(
@@ -216,7 +231,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.action_status(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 group_id,
             ),
         )
@@ -231,7 +246,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.action_toggle(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 action,
                 group_id,
                 enabled,
@@ -247,7 +262,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.action_mode(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 group_id,
                 mode,
             ),
@@ -261,7 +276,7 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.action_overview(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 output_format,
             ),
         )
@@ -269,49 +284,130 @@ class CommandGateway:
     async def enable(self, event: AstrMessageEvent, group_id: str = ""):
         return self.command_result(
             event,
-            await self._controller.enable(dehydrate_event_snapshot(event), group_id),
+            await self._controller.enable(
+                await self._snapshot_for_event(event),
+                group_id,
+            ),
         )
 
     async def disable(self, event: AstrMessageEvent, group_id: str = ""):
         return self.command_result(
             event,
-            await self._controller.disable(dehydrate_event_snapshot(event), group_id),
+            await self._controller.disable(
+                await self._snapshot_for_event(event),
+                group_id,
+            ),
         )
 
     async def group_status(self, event: AstrMessageEvent):
         return self.command_result(
             event,
-            await self._controller.group_status(dehydrate_event_snapshot(event)),
+            await self._controller.group_status(await self._snapshot_for_event(event)),
         )
 
     async def group_enable(self, event: AstrMessageEvent):
         return self.command_result(
             event,
-            await self._controller.group_enable(dehydrate_event_snapshot(event)),
+            await self._controller.group_enable(await self._snapshot_for_event(event)),
         )
 
     async def group_disable(self, event: AstrMessageEvent):
         return self.command_result(
             event,
-            await self._controller.group_disable(dehydrate_event_snapshot(event)),
+            await self._controller.group_disable(await self._snapshot_for_event(event)),
         )
 
     async def group_add(self, event: AstrMessageEvent, word: str):
         return self.command_result(
             event,
-            await self._controller.group_add(dehydrate_event_snapshot(event), word),
+            await self._controller.group_add(
+                await self._snapshot_for_event(event),
+                word,
+            ),
+        )
+
+    async def group_add_to(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.group_add_to(
+                await self._snapshot_for_event(event),
+                group_id,
+                word,
+            ),
         )
 
     async def group_remove(self, event: AstrMessageEvent, word: str):
         return self.command_result(
             event,
-            await self._controller.group_remove(dehydrate_event_snapshot(event), word),
+            await self._controller.group_remove(
+                await self._snapshot_for_event(event),
+                word,
+            ),
+        )
+
+    async def group_remove_to(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.group_remove_to(
+                await self._snapshot_for_event(event),
+                group_id,
+                word,
+            ),
         )
 
     async def group_list(self, event: AstrMessageEvent):
         return self.command_result(
             event,
-            await self._controller.group_list(dehydrate_event_snapshot(event)),
+            await self._controller.group_list(await self._snapshot_for_event(event)),
+        )
+
+    async def group_bypass_add(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.group_bypass_add(
+                await self._snapshot_for_event(event),
+                group_id,
+                word,
+            ),
+        )
+
+    async def group_bypass_remove(
+        self,
+        event: AstrMessageEvent,
+        group_id_or_word: str = "",
+        word: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.group_bypass_remove(
+                await self._snapshot_for_event(event),
+                group_id_or_word,
+                word,
+            ),
+        )
+
+    async def group_bypass_list(self, event: AstrMessageEvent, group_id: str = ""):
+        return self.command_result(
+            event,
+            await self._controller.group_bypass_list(
+                await self._snapshot_for_event(event),
+                group_id,
+            ),
         )
 
     async def group_admin_exempt(
@@ -322,7 +418,26 @@ class CommandGateway:
         return self.command_result(
             event,
             await self._controller.group_admin_exempt_response(
-                dehydrate_event_snapshot(event),
+                await self._snapshot_for_event(event),
                 action,
             ),
+        )
+
+    async def _snapshot_for_event(
+        self,
+        event: AstrMessageEvent,
+    ) -> PlatformEventSnapshot:
+        return await self._group_member_role_resolver.resolve_snapshot(
+            dehydrate_event_snapshot(event),
+            extract_onebot_action_client(event),
+        )
+
+    def _platform_actions_for_snapshot(
+        self,
+        snapshot: PlatformEventSnapshot,
+        event: AstrMessageEvent,
+    ) -> PlatformActions:
+        return self._platform_action_factory.for_platform(
+            snapshot.platform,
+            extract_onebot_action_client(event),
         )

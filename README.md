@@ -21,6 +21,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 ## 指令
 
 以下示例使用 `.cf`。插件仅保留 `cf` 命令入口，避免重复前缀注册到同一批功能。
+显式传入群号的指令不依赖当前消息所在群，可在私聊或任意有机器人的群聊发送；省略群号时才使用当前群，因此需要在群聊中发送。
 
 | 指令 | 说明 |
 | --- | --- |
@@ -29,14 +30,19 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf overview` | 查看当前平台已启用过滤群、监听群和推送绑定数量摘要。 |
 | `.cf overview csv` | 以 CSV 格式列出当前平台启用过滤的群，以及监听群绑定的推送群。 |
 | `.cf regex-skips [数量]` | 查看启动时被跳过的正则规则及原因；仅 AstrBot 管理员可用。 |
-| `.cf enable [群号]` | 启用当前群或指定群过滤；不再作为全局开关。此命令只允许 AstrBot 管理员使用。 |
-| `.cf disable [群号]` | 关闭当前群或指定群过滤；不再作为全局开关。传入群号时只允许 AstrBot 管理员使用。 |
+| `.cf enable [群号]` | 启用当前群或指定群过滤；不再作为全局开关。传入其它群号时只允许 AstrBot 管理员使用。 |
+| `.cf disable [群号]` | 关闭当前群或指定群过滤；不再作为全局开关。传入其它群号时只允许 AstrBot 管理员使用。 |
 | `.cf group status` | 查看当前群过滤状态、继承状态、管理员豁免状态和群自定义词数量。 |
-| `.cf group enable` | 启用当前群过滤。此命令只允许 AstrBot 管理员使用。 |
+| `.cf group enable` | 启用当前群过滤。 |
 | `.cf group disable` | 关闭当前群过滤。 |
 | `.cf group add <词>` | 给当前群添加自定义过滤词。 |
-| `.cf group remove <词>` | 从当前群移除自定义过滤词。 |
+| `.cf group add-to <群号> <词1,词2,...>` | 给指定群添加一个或多个自定义过滤词；仅 AstrBot 管理员可用。 |
+| `.cf group remove <词1,词2,...>` | 从当前群移除一个或多个自定义过滤词。 |
+| `.cf group remove-to <群号> <词1,词2,...>` | 从指定群移除一个或多个自定义过滤词；仅 AstrBot 管理员可用。 |
 | `.cf group list` | 查看当前群自定义词数量。 |
+| `.cf group bypass-add <群号> <词1,词2,...>` | 当前群或指定群绕过一个或多个全局普通词；命中这些短语的全局正则片段也会跳过。 |
+| `.cf group bypass-remove [群号] <词1,词2,...>` | 移除当前群或指定群的全局普通词绕过项。 |
+| `.cf group bypass-list [群号]` | 查看当前群或指定群全局普通词绕过数量。 |
 | `.cf group admin-exempt status` | 查看当前群群主/管理员豁免开关。 |
 | `.cf group admin-exempt enable` | 开启当前群群主/管理员豁免。 |
 | `.cf group admin-exempt disable` | 关闭当前群群主/管理员豁免。 |
@@ -61,8 +67,10 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 ## 权限
 
 - 默认情况下，命令允许 AstrBot 管理员、QQ群主或 QQ 群管理员使用。
-- `.cf enable` 和 `.cf group enable` 更严格，只允许 AstrBot 管理员使用。
-- `.cf disable [群号]` 指定群号时只允许 AstrBot 管理员使用；不指定群号时仍允许当前群的群主或管理员使用。
+- `.cf enable [群号]` 和 `.cf disable [群号]` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改其它群时只允许 AstrBot 管理员。
+- `.cf group add-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group add <词>`。
+- `.cf group remove-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group remove <词>`。
+- `.cf group bypass-add <群号> <词1,词2,...>`、`.cf group bypass-remove [群号] <词1,词2,...>` 和 `.cf group bypass-list [群号]` 修改或查看当前群时允许 AstrBot 管理员或当前群群主/管理员；传入其它群号时只允许 AstrBot 管理员。
 - `.cf regex-skips` 只允许 AstrBot 管理员使用。
 - `.cf action ...` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改指定群号时只允许 AstrBot 管理员。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。
@@ -93,6 +101,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 主数据库：`data/astrbot_plugin_chat_filter/chat_filter.db`
 - 全局规则表：`global_rules`
 - 群策略、推送绑定、禁言策略和命中记录也存储在 SQLite。
+- 群级自定义词存储在 `group_words`；群级全局普通词绕过项存储在 `group_bypass_words`。
 - 群动作策略存储在 SQLite，scope 为 `platform + group_id`；未配置的群默认 `strict` 且禁言、撤回、转发全开。
 - 运行时 JSON 配置只保存功能开关和安全参数，不保存违禁词或正则规则。
 - 手动报表输出到插件数据目录下的 `reports/`。
@@ -104,6 +113,35 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - 非 OneBot 或能力不可用的平台会返回 unsupported/failed 状态，过滤检测本身仍可运行。
 - 命中消息转发依赖 `.cf bind` 配置的推送群；没有绑定时只记录未调度状态。
 - 正则规则跳过原因包括 `empty`、`too_long`、`duplicate`、`high_risk`、`compile_error`、`max_count`、`non_string`。
+
+## 压测 Metrics 快照
+
+以下图表来自一次 1000 个入口事件的运行中 metrics 快照，覆盖 counters、timing 样本数、平均耗时、最大耗时和累计耗时。耗时类图表使用对数刻度，避免低毫秒指标在图中不可见。
+
+![Chat Filter 完整 Metrics 快照柱状图](devlogs/phase-07/chat-filter-metrics-blue.svg)
+
+### 读图结论
+
+- 本次样本中，用户确认 990 条为真实群消息，10 条为非消息事件；`message.unmatched.total` 不应直接理解为 10 条真实聊天文本未命中。
+- `message.matcher.ms` 平均仅 0.082ms，说明关键词和规则匹配不是当前瓶颈。
+- `message.handle_group_message.total` 为 1000，但 `message.handle_group_message.ms` 只记录到 739 个样本；同时 `message.matched.total` 为 990，而 `violation_job.enqueued.total` 为 729。两组差值都是 261，说明抓取快照时仍有 261 个命中入口在等待入队完成。
+- `violation_job.enqueued.total` 为 729，而 `violation_job.completed.total` 为 67，说明这是压测过程中的中间状态，不是 outbox 队列排空后的最终吞吐结果。
+- 撤回、转发和文本日志动作基本在 1-2ms 级别；禁言动作出现过 5.52s 尖峰，但平均 82.79ms，不是当前最大平均瓶颈。
+
+### 建议
+
+- 将命中后的入口返回与违规任务持久化入队解耦，避免 `stop_event` 等待 SQLite 入队完成后才返回。
+- 补充 `violation_job.enqueue.ms`、`violation_job.enqueue_lock_wait.ms`、`violation_outbox.pending.count`、`violation_outbox.processing.count` 和 `oldest_pending_age_ms`，让下一轮压测能直接定位入队等待、锁等待和队列积压。
+- 将非文本事件、空文本事件和真实文本未命中拆成不同 counters，避免 `message.unmatched.total` 被误读。
+- 拆分 `violation_action.forward.success.total` 的语义，例如区分 per-target delivery success 与 aggregate forward success，避免把转发目标数误读为违规消息数。
+- 若继续压测突发流量，评估 SQLite WAL、写入批处理或单 writer 队列；生产前不要只靠增加 worker 数解决，因为连续禁言升级需要关注同一群/同一用户的顺序一致性。
+
+### 当前问题
+
+- 入口平均耗时约 16.49s，最大约 28.51s，不适合作为性能合格指标。
+- 当前快照缺少 p50、p95、p99，无法判断大多数消息的真实体验分布。
+- 快照抓取时 outbox 未排空，不能代表最终处理完成率。
+- 当前 metrics 可以作为诊断样本放入 README，但不应写成“压测通过”或“性能达标”。
 
 ## 运行要求
 

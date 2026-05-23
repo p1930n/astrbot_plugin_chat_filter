@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Protocol
 
 from ..domain.models import ChatMessage, PushBinding, ViolationPushDelivery
 from ..persistence.repository import ChatFilterRepository
+from ..runtime.metrics import ChatFilterMetrics, safe_increment, safe_observe_ms
 from ..platform.platform_actions import (
     ACTION_STATUS_UNSUPPORTED,
     ActionStatus,
@@ -27,6 +29,23 @@ REASON_TEXT_LOG_ACTION_TIMEOUT = "text_log_action_timeout"
 FORWARD_ACTION_TIMEOUT_SECONDS = 10.0
 TEXT_LOG_ACTION_TIMEOUT_SECONDS = 10.0
 TEXT_LOG_DISPLAY_NAME_MAX_LENGTH = 80
+METRIC_ACTION_FORWARD_MS = "violation_action.forward.ms"
+METRIC_ACTION_TEXT_LOG_MS = "violation_action.text_log.ms"
+METRIC_ACTION_FORWARD_TIMEOUT_TOTAL = "violation_action.forward.timeout.total"
+METRIC_ACTION_TEXT_LOG_TIMEOUT_TOTAL = "violation_action.text_log.timeout.total"
+METRIC_ACTION_FORWARD_FAILED_TOTAL = "violation_action.forward.failed.total"
+METRIC_ACTION_TEXT_LOG_FAILED_TOTAL = "violation_action.text_log.failed.total"
+METRIC_ACTION_FORWARD_SUCCESS_TOTAL = "violation_action.forward.success.total"
+METRIC_ACTION_TEXT_LOG_SUCCESS_TOTAL = "violation_action.text_log.success.total"
+METRIC_ACTION_FORWARD_UNSUPPORTED_TOTAL = (
+    "violation_action.forward.unsupported.total"
+)
+METRIC_ACTION_TEXT_LOG_UNSUPPORTED_TOTAL = (
+    "violation_action.text_log.unsupported.total"
+)
+METRIC_ACTION_FORWARD_NOT_SCHEDULED_TOTAL = (
+    "violation_action.forward.not_scheduled.total"
+)
 
 
 class ViolationPushLogger(Protocol):
@@ -41,10 +60,12 @@ class ViolationPushNotifier:
         *,
         audit: ViolationActionAudit,
         logger: ViolationPushLogger,
+        metrics: ChatFilterMetrics,
     ) -> None:
         self._repository = repository
         self._audit = audit
         self._logger = logger
+        self._metrics = metrics
 
     async def forward(
         self,
@@ -57,12 +78,16 @@ class ViolationPushNotifier:
     ) -> PlatformActionResult:
         bindings = await self._push_bindings_for_group(message)
         if bindings is None:
-            return PlatformActionResult.failed(REASON_PUSH_BINDING_LOOKUP_FAILED)
+            result = PlatformActionResult.failed(REASON_PUSH_BINDING_LOOKUP_FAILED)
+            _record_forward_result(self._metrics, result)
+            return result
         if not bindings:
-            return PlatformActionResult(
+            result = PlatformActionResult(
                 status="not_scheduled",
                 reason=REASON_NO_PUSH_BINDINGS,
             )
+            _record_forward_result(self._metrics, result)
+            return result
 
         results: list[PlatformActionResult] = []
         for binding in bindings:
@@ -110,7 +135,12 @@ class ViolationPushNotifier:
                     text_log_result.reason,
                 )
 
-        return PlatformActionResult(status=_aggregate_forward_status(results))
+        result = PlatformActionResult(status=_aggregate_forward_status(results))
+        _record_forward_result(self._metrics, result)
+        return result
+
+    def record_forward_result(self, result: PlatformActionResult) -> None:
+        _record_forward_result(self._metrics, result)
 
     async def _push_bindings_for_group(
         self,
@@ -147,20 +177,34 @@ class ViolationPushNotifier:
                 ),
             ),
         )
+        started_at = perf_counter()
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 platform_actions.send_forward_message(request),
                 timeout=FORWARD_ACTION_TIMEOUT_SECONDS,
             )
+            _record_forward_result(self._metrics, result)
+            return result
         except asyncio.TimeoutError:
             self._logger.error("Chat Filter forward message timed out.")
-            return PlatformActionResult.failed(REASON_FORWARD_ACTION_TIMEOUT)
+            result = PlatformActionResult.failed(REASON_FORWARD_ACTION_TIMEOUT)
+            _record_forward_result(self._metrics, result)
+            safe_increment(self._metrics, METRIC_ACTION_FORWARD_TIMEOUT_TOTAL)
+            return result
         except Exception as exc:
             self._logger.error(
                 "Chat Filter forward message failed: error_type=%s",
                 type(exc).__name__,
             )
-            return PlatformActionResult.failed(REASON_FORWARD_ACTION_FAILED)
+            result = PlatformActionResult.failed(REASON_FORWARD_ACTION_FAILED)
+            _record_forward_result(self._metrics, result)
+            return result
+        finally:
+            safe_observe_ms(
+                self._metrics,
+                METRIC_ACTION_FORWARD_MS,
+                (perf_counter() - started_at) * 1000,
+            )
 
     async def _send_text_log(
         self,
@@ -182,20 +226,34 @@ class ViolationPushNotifier:
                 forward_result=forward_result,
             ),
         )
+        started_at = perf_counter()
         try:
-            return await asyncio.wait_for(
+            result = await asyncio.wait_for(
                 platform_actions.send_text_log(request),
                 timeout=TEXT_LOG_ACTION_TIMEOUT_SECONDS,
             )
+            _record_text_log_result(self._metrics, result)
+            return result
         except asyncio.TimeoutError:
             self._logger.error("Chat Filter text log send timed out.")
-            return PlatformActionResult.failed(REASON_TEXT_LOG_ACTION_TIMEOUT)
+            result = PlatformActionResult.failed(REASON_TEXT_LOG_ACTION_TIMEOUT)
+            _record_text_log_result(self._metrics, result)
+            safe_increment(self._metrics, METRIC_ACTION_TEXT_LOG_TIMEOUT_TOTAL)
+            return result
         except Exception as exc:
             self._logger.error(
                 "Chat Filter text log send failed: error_type=%s",
                 type(exc).__name__,
             )
-            return PlatformActionResult.failed(REASON_TEXT_LOG_ACTION_FAILED)
+            result = PlatformActionResult.failed(REASON_TEXT_LOG_ACTION_FAILED)
+            _record_text_log_result(self._metrics, result)
+            return result
+        finally:
+            safe_observe_ms(
+                self._metrics,
+                METRIC_ACTION_TEXT_LOG_MS,
+                (perf_counter() - started_at) * 1000,
+            )
 
 
 def _aggregate_forward_status(results: list[PlatformActionResult]) -> ActionStatus:
@@ -236,3 +294,32 @@ def _sanitize_text_log_value(value: str) -> str:
     if len(cleaned) <= TEXT_LOG_DISPLAY_NAME_MAX_LENGTH:
         return cleaned
     return cleaned[: TEXT_LOG_DISPLAY_NAME_MAX_LENGTH - 3] + "..."
+
+
+def _record_forward_result(
+    metrics: ChatFilterMetrics,
+    result: PlatformActionResult,
+) -> None:
+    counters = {
+        "failed": METRIC_ACTION_FORWARD_FAILED_TOTAL,
+        "success": METRIC_ACTION_FORWARD_SUCCESS_TOTAL,
+        ACTION_STATUS_UNSUPPORTED: METRIC_ACTION_FORWARD_UNSUPPORTED_TOTAL,
+        "not_scheduled": METRIC_ACTION_FORWARD_NOT_SCHEDULED_TOTAL,
+    }
+    metric_name = counters.get(result.status)
+    if metric_name is not None:
+        safe_increment(metrics, metric_name)
+
+
+def _record_text_log_result(
+    metrics: ChatFilterMetrics,
+    result: PlatformActionResult,
+) -> None:
+    counters = {
+        "failed": METRIC_ACTION_TEXT_LOG_FAILED_TOTAL,
+        "success": METRIC_ACTION_TEXT_LOG_SUCCESS_TOTAL,
+        ACTION_STATUS_UNSUPPORTED: METRIC_ACTION_TEXT_LOG_UNSUPPORTED_TOTAL,
+    }
+    metric_name = counters.get(result.status)
+    if metric_name is not None:
+        safe_increment(metrics, metric_name)

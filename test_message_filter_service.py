@@ -22,17 +22,16 @@ from astrbot_plugin_chat_filter.domain.models import (  # noqa: E402
 )
 from astrbot_plugin_chat_filter.domain.rule_snapshot import RuleSnapshot  # noqa: E402
 from astrbot_plugin_chat_filter.domain.settings import ChatFilterSettings  # noqa: E402
+from astrbot_plugin_chat_filter.runtime.metrics import ChatFilterMetrics  # noqa: E402
 
 
 class MessageFilterServiceTests(unittest.TestCase):
-    def test_match_records_executes_actions_and_returns_entry_decision(self) -> None:
+    def test_match_enqueues_job_and_returns_entry_decision(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
-        recorder = _Recorder(violation_id=42)
-        executor = _Executor()
+        job_queue = _JobQueue()
         service = _service(
             matcher=matcher,
-            recorder=recorder,
-            executor=executor,
+            job_queue=job_queue,
             settings=ChatFilterSettings.from_config(
                 {
                     "warning_message": "warn",
@@ -42,9 +41,7 @@ class MessageFilterServiceTests(unittest.TestCase):
         message = _message("blocked text")
         platform_actions = _PlatformActions()
 
-        result = asyncio.run(
-            service.handle_group_message(message, platform_actions)
-        )
+        result = asyncio.run(service.handle_group_message(message, platform_actions))
 
         self.assertEqual(
             result,
@@ -53,19 +50,12 @@ class MessageFilterServiceTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(matcher.calls), 1)
-        self.assertEqual(recorder.calls, [(message, "blocked")])
-        self.assertEqual(executor.calls, [(42, message, platform_actions)])
-        self.assertEqual(platform_actions.text_logs, [("qq", "100", "warn")])
+        self.assertEqual(job_queue.calls, [(message, "blocked", platform_actions)])
 
-    def test_no_match_skips_recording_and_actions(self) -> None:
+    def test_no_match_skips_job_enqueue(self) -> None:
         matcher = _Matcher(MatchResult(matched=False))
-        recorder = _Recorder(violation_id=42)
-        executor = _Executor()
-        service = _service(
-            matcher=matcher,
-            recorder=recorder,
-            executor=executor,
-        )
+        job_queue = _JobQueue()
+        service = _service(matcher=matcher, job_queue=job_queue)
 
         result = asyncio.run(
             service.handle_group_message(_message("clean"), _PlatformActions())
@@ -73,18 +63,51 @@ class MessageFilterServiceTests(unittest.TestCase):
 
         self.assertEqual(result, MessageFilterResult())
         self.assertEqual(len(matcher.calls), 1)
-        self.assertEqual(recorder.calls, [])
-        self.assertEqual(executor.calls, [])
+        self.assertEqual(job_queue.calls, [])
 
-    def test_records_disabled_preserves_stop_warn_and_actions(self) -> None:
+    def test_metrics_count_matched_unmatched_and_scope_missing(self) -> None:
+        metrics = ChatFilterMetrics()
+        matched_service = _service(
+            matcher=_Matcher(MatchResult(matched=True, matched_word="blocked")),
+            metrics=metrics,
+        )
+        unmatched_service = _service(
+            matcher=_Matcher(MatchResult(matched=False)),
+            metrics=metrics,
+        )
+        scope_service = _service(
+            matcher=_Matcher(MatchResult(matched=True, matched_word="blocked")),
+            metrics=metrics,
+        )
+
+        asyncio.run(
+            matched_service.handle_group_message(_message("blocked"), _PlatformActions())
+        )
+        asyncio.run(
+            unmatched_service.handle_group_message(_message("clean"), _PlatformActions())
+        )
+        asyncio.run(
+            scope_service.handle_group_message(
+                ChatMessage(platform="", group_id="100", user_id="200", text="x"),
+                _PlatformActions(),
+            )
+        )
+
+        snapshot = metrics.snapshot()
+        self.assertEqual(snapshot.counters["message.handle_group_message.total"], 3)
+        self.assertEqual(snapshot.counters["message.matched.total"], 1)
+        self.assertEqual(snapshot.counters["message.unmatched.total"], 1)
+        self.assertEqual(snapshot.counters["message.scope_missing.total"], 1)
+        self.assertEqual(snapshot.timings["message.handle_group_message.ms"].count, 3)
+        self.assertEqual(snapshot.timings["message.matcher.ms"].count, 2)
+
+    def test_records_disabled_still_enqueues_matched_job(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
-        recorder = _Recorder(violation_id=42)
-        executor = _Executor()
+        job_queue = _JobQueue()
         platform_actions = _PlatformActions()
         service = _service(
             matcher=matcher,
-            recorder=recorder,
-            executor=executor,
+            job_queue=job_queue,
             settings=ChatFilterSettings.from_config(
                 {
                     "violation_records_enabled": False,
@@ -92,10 +115,9 @@ class MessageFilterServiceTests(unittest.TestCase):
                 }
             ),
         )
+        message = _message("blocked")
 
-        result = asyncio.run(
-            service.handle_group_message(_message("blocked"), platform_actions)
-        )
+        result = asyncio.run(service.handle_group_message(message, platform_actions))
 
         self.assertEqual(
             result,
@@ -103,49 +125,22 @@ class MessageFilterServiceTests(unittest.TestCase):
                 stop_event=True,
             ),
         )
-        self.assertEqual(recorder.calls, [])
-        self.assertEqual(
-            executor.calls,
-            [(None, _message("blocked"), platform_actions)],
-        )
+        self.assertEqual(job_queue.calls, [(message, "blocked", platform_actions)])
 
-    def test_record_failure_still_executes_actions(self) -> None:
+    def test_queue_rejection_still_returns_entry_decision(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
-        recorder = _Recorder(violation_id=None)
-        executor = _Executor()
+        job_queue = _JobQueue(accepted=False)
         platform_actions = _PlatformActions()
         service = _service(
             matcher=matcher,
-            recorder=recorder,
-            executor=executor,
+            job_queue=job_queue,
         )
         message = _message("blocked")
 
         result = asyncio.run(service.handle_group_message(message, platform_actions))
 
         self.assertEqual(result, MessageFilterResult(stop_event=True))
-        self.assertEqual(recorder.calls, [(message, "blocked")])
-        self.assertEqual(executor.calls, [(None, message, platform_actions)])
-
-    def test_warning_message_send_failure_is_logged_without_user_error(self) -> None:
-        matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
-        logger = _Logger()
-        platform_actions = _PlatformActions(send_error=RuntimeError("boom"))
-        service = _service(
-            matcher=matcher,
-            settings=ChatFilterSettings.from_config({"warning_message": "warn"}),
-            logger=logger,
-        )
-
-        result = asyncio.run(
-            service.handle_group_message(_message("blocked"), platform_actions)
-        )
-
-        self.assertEqual(result, MessageFilterResult(stop_event=True))
-        self.assertEqual(
-            logger.warning_calls,
-            [("RuntimeError",)],
-        )
+        self.assertEqual(job_queue.calls, [(message, "blocked", platform_actions)])
 
     def test_incomplete_scope_logs_and_skips_matcher(self) -> None:
         matcher = _Matcher(MatchResult(matched=True, matched_word="blocked"))
@@ -188,32 +183,20 @@ class _Matcher:
         return self._result
 
 
-class _Recorder:
-    def __init__(self, violation_id: int | None) -> None:
-        self._violation_id = violation_id
-        self.calls: list[tuple[ChatMessage, str | None]] = []
+class _JobQueue:
+    def __init__(self, accepted: bool = True) -> None:
+        self._accepted = accepted
+        self.calls: list[tuple[ChatMessage, str | None, _PlatformActions]] = []
 
-    async def record(
-        self,
-        message: ChatMessage,
-        matched_word: str | None,
-    ) -> int | None:
-        self.calls.append((message, matched_word))
-        return self._violation_id
-
-
-class _Executor:
-    def __init__(self) -> None:
-        self.calls: list[tuple[int | None, ChatMessage, _PlatformActions]] = []
-
-    async def execute(
+    def try_enqueue_ingress(
         self,
         *,
-        violation_id: int | None,
         message: ChatMessage,
+        matched_word: str | None,
         platform_actions: "_PlatformActions",
-    ) -> None:
-        self.calls.append((violation_id, message, platform_actions))
+    ) -> bool:
+        self.calls.append((message, matched_word, platform_actions))
+        return self._accepted
 
 
 class _Logger:
@@ -226,26 +209,16 @@ class _Logger:
 
 
 class _PlatformActions:
-    def __init__(self, send_error: Exception | None = None) -> None:
-        self._send_error = send_error
-        self.text_logs: list[tuple[str, str, str]] = []
-
-    async def send_text_log(self, request) -> object:
-        if self._send_error is not None:
-            raise self._send_error
-        self.text_logs.append(
-            (request.platform, request.target_group_id, request.text)
-        )
-        return object()
+    pass
 
 
 def _service(
     *,
     matcher: _Matcher,
-    recorder: _Recorder | None = None,
-    executor: _Executor | None = None,
+    job_queue: _JobQueue | None = None,
     settings: ChatFilterSettings | None = None,
     logger: _Logger | None = None,
+    metrics: ChatFilterMetrics | None = None,
 ) -> MessageFilterService:
     return MessageFilterService(
         matcher=matcher,
@@ -257,8 +230,8 @@ def _service(
             global_regex_rules=(),
             case_sensitive=False,
         ),
-        violation_recorder=recorder or _Recorder(violation_id=None),
-        violation_action_executor=executor or _Executor(),
+        violation_job_queue=job_queue or _JobQueue(),
+        metrics=metrics or ChatFilterMetrics(),
         logger=logger or _Logger(),
     )
 

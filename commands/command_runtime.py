@@ -8,6 +8,8 @@ from ..persistence.repository import ChatFilterRepository, RepositorySchemaError
 
 GroupWordAddResult = Literal["added", "exists", "limit", "save_failed"]
 GroupWordRemoveResult = Literal["removed", "not_found", "save_failed"]
+GroupBypassWordAddResult = Literal["added", "exists", "limit", "save_failed"]
+GroupBypassWordRemoveResult = Literal["removed", "not_found", "save_failed"]
 
 
 class CommandLogger(Protocol):
@@ -107,6 +109,44 @@ class CommandRuntimeService:
                 return "save_failed"
             return "removed"
 
+    async def add_group_bypass_word(
+        self,
+        group_key: str,
+        word: str,
+        max_word_count: int,
+    ) -> GroupBypassWordAddResult:
+        async with self._state_lock:
+            policy = self._copy_group_policy_unlocked(group_key)
+            if word in policy.bypass_global_words:
+                return "exists"
+            if len(policy.bypass_global_words) >= max_word_count:
+                return "limit"
+
+            policy.bypass_global_words = (*policy.bypass_global_words, word)
+            self._state.set_group_policy(group_key, policy)
+            if not await self._try_save_state_unlocked():
+                return "save_failed"
+            return "added"
+
+    async def remove_group_bypass_word(
+        self,
+        group_key: str,
+        word: str,
+    ) -> GroupBypassWordRemoveResult:
+        async with self._state_lock:
+            policy = self._copy_group_policy_unlocked(group_key)
+            remaining = tuple(
+                item for item in policy.bypass_global_words if item != word.strip()
+            )
+            if len(remaining) == len(policy.bypass_global_words):
+                return "not_found"
+
+            policy.bypass_global_words = remaining
+            self._state.set_group_policy(group_key, policy)
+            if not await self._try_save_state_unlocked():
+                return "save_failed"
+            return "removed"
+
     async def _try_save_state_unlocked(self) -> bool:
         try:
             await asyncio.to_thread(self._repository.save, self._state)
@@ -128,4 +168,5 @@ class CommandRuntimeService:
             inherit_global=policy.inherit_global,
             admin_exempt_enabled=policy.admin_exempt_enabled,
             custom_words=policy.custom_words,
+            bypass_global_words=policy.bypass_global_words,
         )

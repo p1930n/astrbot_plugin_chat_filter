@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
@@ -23,6 +24,8 @@ class RepositoryBase:
         self._database_path = self._root / DATABASE_FILENAME
         self._max_word_count = max_word_count
         self._max_word_length = max_word_length
+        self._schema_lock = threading.Lock()
+        self._schema_ready = False
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -39,7 +42,13 @@ class RepositoryBase:
         return connection
 
     def _ensure_schema(self, connection: sqlite3.Connection) -> None:
-        ensure_schema(connection)
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if self._schema_ready:
+                return
+            ensure_schema(connection)
+            self._schema_ready = True
 
 
 def default_data_root() -> str:

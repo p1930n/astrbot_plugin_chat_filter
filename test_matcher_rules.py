@@ -92,6 +92,95 @@ class MatcherRuleSnapshotTests(unittest.TestCase):
         self.assertEqual(regex_result.matched_word, "regex:^root$")
         self.assertEqual(regex_result.word_count, 2)
 
+    def test_matcher_removes_group_bypassed_global_words(self) -> None:
+        settings = ChatFilterSettings.from_config({})
+        snapshot = RuleSnapshot.from_rules(
+            [
+                _rule(1, "word", "blocked"),
+                _rule(2, "word", "other"),
+            ],
+            settings=settings,
+        )
+        state = RuntimeState(
+            groups={
+                "qq:200": GroupPolicy(
+                    enabled=True,
+                    custom_words=("local",),
+                    bypass_global_words=("blocked",),
+                )
+            }
+        )
+        matcher = ChatFilterMatcher()
+
+        bypassed_result = matcher.detect(
+            _message("blocked"),
+            settings,
+            state,
+            snapshot,
+        )
+        other_global_result = matcher.detect(
+            _message("other"),
+            settings,
+            state,
+            snapshot,
+        )
+        local_result = matcher.detect(
+            _message("local"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertFalse(bypassed_result.matched)
+        self.assertTrue(other_global_result.matched)
+        self.assertEqual(other_global_result.matched_word, "other")
+        self.assertEqual(other_global_result.word_count, 2)
+        self.assertTrue(local_result.matched)
+        self.assertEqual(local_result.matched_word, "local")
+
+    def test_matcher_skips_regex_matches_covered_by_group_bypass_words(self) -> None:
+        settings = ChatFilterSettings.from_config({})
+        snapshot = RuleSnapshot.from_rules(
+            [
+                _rule(1, "regex", "操{{GAP}}你{{GAP}}妈"),
+                _rule(2, "regex", "^root$"),
+            ],
+            settings=settings,
+        )
+        state = RuntimeState(
+            groups={
+                "qq:200": GroupPolicy(
+                    enabled=True,
+                    bypass_global_words=("操你妈",),
+                )
+            }
+        )
+        matcher = ChatFilterMatcher()
+
+        direct_bypass = matcher.detect(
+            _message("操你妈"),
+            settings,
+            state,
+            snapshot,
+        )
+        obfuscated_bypass = matcher.detect(
+            _message("操xx你yy妈"),
+            settings,
+            state,
+            snapshot,
+        )
+        unrelated_regex = matcher.detect(
+            _message("root"),
+            settings,
+            state,
+            snapshot,
+        )
+
+        self.assertFalse(direct_bypass.matched)
+        self.assertFalse(obfuscated_bypass.matched)
+        self.assertTrue(unrelated_regex.matched)
+        self.assertEqual(unrelated_regex.matched_word, "regex:^root$")
+
     def test_legacy_global_disabled_state_no_longer_blocks_enabled_group(self) -> None:
         settings = ChatFilterSettings.from_config({})
         snapshot = RuleSnapshot.from_rules(

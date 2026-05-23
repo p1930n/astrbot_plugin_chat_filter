@@ -87,6 +87,31 @@ class ViolationRepositoryMixin:
                         f"{cursor.rowcount} rows"
                     )
 
+    def get_violation_action_statuses(
+        self,
+        *,
+        violation_id: int,
+    ) -> dict[ViolationActionName, str]:
+        with self._connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    action_mute_status,
+                    action_recall_status,
+                    action_forward_status
+                FROM violation_events
+                WHERE id = ?
+                """,
+                (violation_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"violation event not found: {violation_id}")
+        return {
+            "mute": str(row[0]),
+            "recall": str(row[1]),
+            "forward": str(row[2]),
+        }
+
     def upsert_violation_push_delivery(
         self,
         delivery: ViolationPushDelivery,

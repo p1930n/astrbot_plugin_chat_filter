@@ -125,7 +125,8 @@ class MainGroupMessageFilterTests(unittest.TestCase):
             )
         )
         factory = _PlatformActionFactory()
-        plugin = _plugin(service=service, factory=factory)
+        job_queue = _ViolationJobQueue()
+        plugin = _plugin(service=service, factory=factory, job_queue=job_queue)
 
         results = asyncio.run(_collect(plugin.on_group_message(event)))
 
@@ -137,8 +138,15 @@ class MainGroupMessageFilterTests(unittest.TestCase):
         self.assertEqual(message.group_id, "100")
         self.assertEqual(message.user_id, "200")
         self.assertEqual(message.text, "blocked text")
+        self.assertEqual(message.sender_role, "admin")
         self.assertIs(platform_actions, factory.actions)
         self.assertEqual(factory.calls, [("aiocqhttp", action_client)])
+        self.assertEqual(
+            plugin.group_member_role_resolver.calls,
+            [("aiocqhttp", "100", "200", action_client)],
+        )
+        self.assertEqual(job_queue.register_calls, [("aiocqhttp", factory.actions)])
+        self.assertEqual(job_queue.start_calls, 1)
 
     def test_group_message_skips_own_command_before_service(self) -> None:
         for command_text in (" /cf status", ".cf overview csv"):
@@ -152,7 +160,11 @@ class MainGroupMessageFilterTests(unittest.TestCase):
                 )
                 service = _MessageFilterService(MessageFilterResult())
                 factory = _PlatformActionFactory()
-                plugin = _plugin(service=service, factory=factory)
+                plugin = _plugin(
+                    service=service,
+                    factory=factory,
+                    job_queue=_ViolationJobQueue(),
+                )
 
                 results = asyncio.run(_collect(plugin.on_group_message(event)))
 
@@ -172,6 +184,31 @@ class _MessageFilterService:
         return self._result
 
 
+class _RoleResolver:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str, object | None]] = []
+
+    async def resolve_message(self, message, action_client):
+        self.calls.append(
+            (
+                message.platform,
+                message.group_id,
+                message.user_id,
+                action_client,
+            )
+        )
+        return type(message)(
+            platform=message.platform,
+            group_id=message.group_id,
+            user_id=message.user_id,
+            text=message.text,
+            message_id=message.message_id,
+            sender_role="admin",
+            sender_display_name=message.sender_display_name,
+            group_display_name=message.group_display_name,
+        )
+
+
 class _PlatformActionFactory:
     def __init__(self) -> None:
         self.actions = object()
@@ -180,6 +217,18 @@ class _PlatformActionFactory:
     def for_platform(self, platform: str, action_client: object | None) -> object:
         self.calls.append((platform, action_client))
         return self.actions
+
+
+class _ViolationJobQueue:
+    def __init__(self) -> None:
+        self.register_calls: list[tuple[str, object]] = []
+        self.start_calls = 0
+
+    def register_platform_actions(self, platform: str, platform_actions: object) -> None:
+        self.register_calls.append((platform, platform_actions))
+
+    def start(self) -> None:
+        self.start_calls += 1
 
 
 class _Event:
@@ -211,10 +260,13 @@ def _plugin(
     *,
     service: _MessageFilterService,
     factory: _PlatformActionFactory,
+    job_queue: _ViolationJobQueue,
 ) -> ChatFilterPlugin:
     plugin = object.__new__(ChatFilterPlugin)
     plugin.message_filter_service = service
+    plugin.group_member_role_resolver = _RoleResolver()
     plugin._platform_action_factory = factory
+    plugin.violation_job_queue = job_queue
     return plugin
 
 

@@ -29,6 +29,8 @@ from astrbot_plugin_chat_filter.persistence.repository_schema import (  # noqa: 
     V1_REQUIRED_TABLE_COLUMNS,
     V2_REQUIRED_TABLE_COLUMNS,
     V3_REQUIRED_TABLE_COLUMNS,
+    V4_REQUIRED_TABLE_COLUMNS,
+    V5_REQUIRED_TABLE_COLUMNS,
 )
 
 
@@ -111,6 +113,7 @@ class RepositorySchemaTests(unittest.TestCase):
                             enabled=True,
                             admin_exempt_enabled=False,
                             custom_words=("local",),
+                            bypass_global_words=("global-alpha",),
                         )
                     }
                 )
@@ -120,6 +123,10 @@ class RepositorySchemaTests(unittest.TestCase):
 
             self.assertFalse(loaded.groups["qq:100"].admin_exempt_enabled)
             self.assertEqual(loaded.groups["qq:100"].custom_words, ("local",))
+            self.assertEqual(
+                loaded.groups["qq:100"].bypass_global_words,
+                ("global-alpha",),
+            )
 
     def test_versioned_group_policy_migration_defaults_admin_exemption_enabled(
         self,
@@ -198,6 +205,55 @@ class RepositorySchemaTests(unittest.TestCase):
             with _connect(database_path) as connection:
                 self.assertEqual(_schema_version(connection), CURRENT_SCHEMA_VERSION)
 
+    def test_v4_database_migrates_to_outbox_table(self) -> None:
+        with _temporary_directory() as root:
+            database_path = Path(root) / DATABASE_FILENAME
+            with _connect(database_path) as connection:
+                _create_legacy_schema(
+                    connection,
+                    V4_REQUIRED_TABLE_COLUMNS,
+                    version=4,
+                )
+
+            repository = ChatFilterRepository(root, max_word_count=20, max_word_length=80)
+
+            self.assertEqual(repository.count_active_violation_outbox_jobs(), 0)
+            self.assert_schema_complete(database_path)
+            with _connect(database_path) as connection:
+                self.assertEqual(_schema_version(connection), CURRENT_SCHEMA_VERSION)
+
+    def test_v5_database_migrates_to_group_bypass_words_table(self) -> None:
+        with _temporary_directory() as root:
+            database_path = Path(root) / DATABASE_FILENAME
+            with _connect(database_path) as connection:
+                _create_legacy_schema(
+                    connection,
+                    V5_REQUIRED_TABLE_COLUMNS,
+                    version=5,
+                )
+
+            repository = ChatFilterRepository(root, max_word_count=20, max_word_length=80)
+
+            repository.save(
+                RuntimeState(
+                    groups={
+                        "qq:100": GroupPolicy(
+                            enabled=True,
+                            bypass_global_words=("global-alpha",),
+                        )
+                    }
+                )
+            )
+            loaded = repository.load()
+
+            self.assertEqual(
+                loaded.groups["qq:100"].bypass_global_words,
+                ("global-alpha",),
+            )
+            self.assert_schema_complete(database_path)
+            with _connect(database_path) as connection:
+                self.assertEqual(_schema_version(connection), CURRENT_SCHEMA_VERSION)
+
     def test_json_state_missing_group_admin_exemption_defaults_enabled(self) -> None:
         with _temporary_directory() as root:
             state_path = Path(root) / STATE_FILENAME
@@ -210,6 +266,7 @@ class RepositorySchemaTests(unittest.TestCase):
                                 "enabled": True,
                                 "inherit_global": False,
                                 "custom_words": ["local"],
+                                "bypass_global_words": ["global-alpha"],
                             }
                         },
                     }
@@ -222,6 +279,10 @@ class RepositorySchemaTests(unittest.TestCase):
 
             self.assertTrue(state.groups["qq:100"].admin_exempt_enabled)
             self.assertEqual(state.groups["qq:100"].custom_words, ("local",))
+            self.assertEqual(
+                state.groups["qq:100"].bypass_global_words,
+                ("global-alpha",),
+            )
             with _connect(Path(root) / DATABASE_FILENAME) as connection:
                 self.assertEqual(_admin_exempt_enabled(connection, "qq:100"), 1)
 
@@ -329,6 +390,19 @@ def _create_legacy_schema(
             connection.execute(
                 """
                 CREATE TABLE group_words (
+                    group_key TEXT NOT NULL,
+                    word TEXT NOT NULL,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (group_key, word)
+                )
+                """
+            )
+            continue
+        if table_name == "group_bypass_words":
+            connection.execute(
+                """
+                CREATE TABLE group_bypass_words (
                     group_key TEXT NOT NULL,
                     word TEXT NOT NULL,
                     position INTEGER NOT NULL DEFAULT 0,

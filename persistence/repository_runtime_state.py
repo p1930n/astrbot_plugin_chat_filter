@@ -49,6 +49,8 @@ class RuntimeStateRepositoryMixin:
                 SELECT 1 FROM group_policies
                 UNION ALL
                 SELECT 1 FROM group_words
+                UNION ALL
+                SELECT 1 FROM group_bypass_words
             )
             """
         )
@@ -107,6 +109,31 @@ class RuntimeStateRepositoryMixin:
                     max_count=self._max_word_count,
                     max_length=self._max_word_length,
                 ),
+                bypass_global_words=policy.bypass_global_words,
+            )
+
+        raw_bypass_words: dict[str, list[str]] = {}
+        for group_key, word in connection.execute(
+            """
+            SELECT group_key, word
+            FROM group_bypass_words
+            ORDER BY group_key, position, word
+            """
+        ):
+            raw_bypass_words.setdefault(group_key, []).append(word)
+
+        for group_key, words in raw_bypass_words.items():
+            policy = groups.get(group_key, GroupPolicy())
+            groups[group_key] = GroupPolicy(
+                enabled=policy.enabled,
+                inherit_global=policy.inherit_global,
+                admin_exempt_enabled=policy.admin_exempt_enabled,
+                custom_words=policy.custom_words,
+                bypass_global_words=normalize_words(
+                    words,
+                    max_count=self._max_word_count,
+                    max_length=self._max_word_length,
+                ),
             )
 
         return RuntimeState(global_enabled=global_enabled, groups=groups)
@@ -114,6 +141,7 @@ class RuntimeStateRepositoryMixin:
     def _save_to_database(self, connection: sqlite3.Connection, state: RuntimeState) -> None:
         now = utc_now()
         with connection:
+            connection.execute("DELETE FROM group_bypass_words")
             connection.execute("DELETE FROM group_words")
             connection.execute("DELETE FROM group_policies")
             connection.execute("DELETE FROM runtime_state")
@@ -155,6 +183,21 @@ class RuntimeStateRepositoryMixin:
                         for position, word in enumerate(policy.custom_words)
                     ],
                 )
+                connection.executemany(
+                    """
+                    INSERT INTO group_bypass_words (
+                        group_key,
+                        word,
+                        position,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [
+                        (group_key, word, position, now)
+                        for position, word in enumerate(policy.bypass_global_words)
+                    ],
+                )
 
     def _load_groups(self, value: object) -> dict[str, GroupPolicy]:
         if not isinstance(value, dict):
@@ -172,6 +215,11 @@ class RuntimeStateRepositoryMixin:
                 ),
                 custom_words=normalize_words(
                     raw_policy.get("custom_words"),
+                    max_count=self._max_word_count,
+                    max_length=self._max_word_length,
+                ),
+                bypass_global_words=normalize_words(
+                    raw_policy.get("bypass_global_words"),
                     max_count=self._max_word_count,
                     max_length=self._max_word_length,
                 ),

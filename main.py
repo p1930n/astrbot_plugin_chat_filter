@@ -49,10 +49,13 @@ class ChatFilterPlugin(Star):
         self.state = runtime.state
         self.command_service = runtime.command_service
         self.matcher = runtime.matcher
+        self.metrics = runtime.metrics
         self.platform_actions = runtime.platform_actions
         self.violation_action_executor = runtime.violation_action_executor
         self.violation_recorder = runtime.violation_recorder
+        self.violation_job_queue = runtime.violation_job_queue
         self.message_filter_service = runtime.message_filter_service
+        self.group_member_role_resolver = runtime.group_member_role_resolver
         self.report_service = runtime.report_service
         self.file_probe_service = runtime.file_probe_service
         self._platform_action_factory = runtime.platform_action_factory
@@ -64,9 +67,18 @@ class ChatFilterPlugin(Star):
         if self._is_own_command(message.text):
             return
 
+        action_client = extract_onebot_action_client(event)
+        message = await self.group_member_role_resolver.resolve_message(
+            message,
+            action_client,
+        )
         platform_actions = self._platform_action_factory.for_platform(
             message.platform,
-            extract_onebot_action_client(event),
+            action_client,
+        )
+        self.violation_job_queue.register_platform_actions(
+            message.platform,
+            platform_actions,
         )
         result = await self.message_filter_service.handle_group_message(
             message,
@@ -74,6 +86,10 @@ class ChatFilterPlugin(Star):
         )
         if result.stop_event:
             event.stop_event()
+        self.violation_job_queue.start()
+
+    async def terminate(self) -> None:
+        await self.violation_job_queue.shutdown()
 
     @filter.command_group("cf")
     def cf():
@@ -160,6 +176,10 @@ class ChatFilterPlugin(Star):
     @cf.command("regex-skips")
     async def cf_regex_skips(self, event: AstrMessageEvent, limit: str = ""):
         yield await self._command_gateway.regex_skips(event, limit)
+
+    @cf.command("metrics")
+    async def cf_metrics(self, event: AstrMessageEvent):
+        yield await self._command_gateway.metrics(event)
 
     @cf.group("action")
     def cf_action():
@@ -260,13 +280,65 @@ class ChatFilterPlugin(Star):
     async def cf_group_add(self, event: AstrMessageEvent, word: str):
         yield await self._command_gateway.group_add(event, word)
 
+    @cf_group.command("add-to")
+    async def cf_group_add_to(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        yield await self._command_gateway.group_add_to(event, group_id, word)
+
     @cf_group.command("remove")
-    async def cf_group_remove(self, event: AstrMessageEvent, word: str):
+    async def cf_group_remove(self, event: AstrMessageEvent, word: str = ""):
         yield await self._command_gateway.group_remove(event, word)
+
+    @cf_group.command("remove-to")
+    async def cf_group_remove_to(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        yield await self._command_gateway.group_remove_to(event, group_id, word)
 
     @cf_group.command("list")
     async def cf_group_list(self, event: AstrMessageEvent):
         yield await self._command_gateway.group_list(event)
+
+    @cf_group.command("bypass-add")
+    async def cf_group_bypass_add(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        yield await self._command_gateway.group_bypass_add(
+            event,
+            group_id,
+            word,
+        )
+
+    @cf_group.command("bypass-remove")
+    async def cf_group_bypass_remove(
+        self,
+        event: AstrMessageEvent,
+        group_id_or_word: str = "",
+        word: str = "",
+    ):
+        yield await self._command_gateway.group_bypass_remove(
+            event,
+            group_id_or_word,
+            word,
+        )
+
+    @cf_group.command("bypass-list")
+    async def cf_group_bypass_list(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+    ):
+        yield await self._command_gateway.group_bypass_list(event, group_id)
 
     @cf_group.command("admin-exempt")
     async def cf_group_admin_exempt(

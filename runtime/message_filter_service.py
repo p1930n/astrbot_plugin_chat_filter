@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Protocol
 
 from ..domain.models import ChatMessage, MatchResult, RuntimeState
-from ..platform.platform_actions import PlatformActions, SendTextLogRequest
+from ..platform.platform_actions import PlatformActions
 from ..domain.rule_snapshot import RuleSnapshot
 from ..domain.settings import ChatFilterSettings
+from .metrics import ChatFilterMetrics, safe_increment, safe_observe_ms
+
+
+METRIC_HANDLE_GROUP_MESSAGE_TOTAL = "message.handle_group_message.total"
+METRIC_HANDLE_GROUP_MESSAGE_MS = "message.handle_group_message.ms"
+METRIC_MATCHER_MS = "message.matcher.ms"
+METRIC_SCOPE_MISSING_TOTAL = "message.scope_missing.total"
+METRIC_MATCHED_TOTAL = "message.matched.total"
+METRIC_UNMATCHED_TOTAL = "message.unmatched.total"
 
 
 class MessageFilterLogger(Protocol):
@@ -25,23 +35,14 @@ class MessageMatcher(Protocol):
         ...
 
 
-class ViolationRecorderProtocol(Protocol):
-    async def record(
-        self,
-        message: ChatMessage,
-        matched_word: str | None,
-    ) -> int | None:
-        ...
-
-
-class ViolationActionExecutorProtocol(Protocol):
-    async def execute(
+class ViolationJobQueueProtocol(Protocol):
+    def try_enqueue_ingress(
         self,
         *,
-        violation_id: int | None,
         message: ChatMessage,
+        matched_word: str | None,
         platform_actions: PlatformActions,
-    ) -> None:
+    ) -> bool:
         ...
 
 
@@ -60,16 +61,16 @@ class MessageFilterService:
         settings: ChatFilterSettings,
         state: RuntimeState,
         rule_snapshot: RuleSnapshot,
-        violation_recorder: ViolationRecorderProtocol,
-        violation_action_executor: ViolationActionExecutorProtocol,
+        violation_job_queue: ViolationJobQueueProtocol,
+        metrics: ChatFilterMetrics,
         logger: MessageFilterLogger,
     ) -> None:
         self._matcher = matcher
         self._settings = settings
         self._state = state
         self._rule_snapshot = rule_snapshot
-        self._violation_recorder = violation_recorder
-        self._violation_action_executor = violation_action_executor
+        self._violation_job_queue = violation_job_queue
+        self._metrics = metrics
         self._logger = logger
 
     async def handle_group_message(
@@ -77,62 +78,53 @@ class MessageFilterService:
         message: ChatMessage,
         platform_actions: PlatformActions,
     ) -> MessageFilterResult:
-        if not _has_required_message_scope(message):
-            self._logger.warning(
-                "Chat Filter skipped message with incomplete event scope: "
-                "platform=%s group_id=%s sender_id=%s",
-                _field_state(message.platform),
-                _field_state(message.group_id),
-                _field_state(message.user_id),
-            )
-            return MessageFilterResult()
-
-        result = self._matcher.detect(
-            message,
-            self._settings,
-            self._state,
-            self._rule_snapshot,
-        )
-        if not result.matched:
-            return MessageFilterResult()
-
-        violation_id: int | None = None
-        if self._settings.violation_records_enabled:
-            violation_id = await self._violation_recorder.record(
-                message,
-                result.matched_word,
-            )
-
-        await self._violation_action_executor.execute(
-            violation_id=violation_id,
-            message=message,
-            platform_actions=platform_actions,
-        )
-
-        if self._settings.warn_user:
-            await self._send_warning_message(message, platform_actions)
-
-        return MessageFilterResult(
-            stop_event=self._settings.stop_event,
-        )
-
-    async def _send_warning_message(
-        self,
-        message: ChatMessage,
-        platform_actions: PlatformActions,
-    ) -> None:
+        started_at = perf_counter()
+        safe_increment(self._metrics, METRIC_HANDLE_GROUP_MESSAGE_TOTAL)
         try:
-            await platform_actions.send_text_log(
-                SendTextLogRequest(
-                    platform=message.platform,
-                    target_group_id=message.group_id,
-                    text=self._settings.warning_message,
+            if not _has_required_message_scope(message):
+                safe_increment(self._metrics, METRIC_SCOPE_MISSING_TOTAL)
+                self._logger.warning(
+                    "Chat Filter skipped message with incomplete event scope: "
+                    "platform=%s group_id=%s sender_id=%s",
+                    _field_state(message.platform),
+                    _field_state(message.group_id),
+                    _field_state(message.user_id),
                 )
+                return MessageFilterResult()
+
+            matcher_started_at = perf_counter()
+            try:
+                result = self._matcher.detect(
+                    message,
+                    self._settings,
+                    self._state,
+                    self._rule_snapshot,
+                )
+            finally:
+                safe_observe_ms(
+                    self._metrics,
+                    METRIC_MATCHER_MS,
+                    (perf_counter() - matcher_started_at) * 1000,
+                )
+            if not result.matched:
+                safe_increment(self._metrics, METRIC_UNMATCHED_TOTAL)
+                return MessageFilterResult()
+
+            safe_increment(self._metrics, METRIC_MATCHED_TOTAL)
+            self._violation_job_queue.try_enqueue_ingress(
+                message=message,
+                matched_word=result.matched_word,
+                platform_actions=platform_actions,
             )
-        except Exception as exc:
-            self._logger.warning(
-                "Chat Filter warning message send failed: error_type=%s",
-                type(exc).__name__,
+
+            return MessageFilterResult(
+                stop_event=self._settings.stop_event,
+            )
+        finally:
+            safe_observe_ms(
+                self._metrics,
+                METRIC_HANDLE_GROUP_MESSAGE_MS,
+                (perf_counter() - started_at) * 1000,
             )
 
 
