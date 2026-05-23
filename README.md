@@ -29,12 +29,13 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf overview` | 查看当前平台已启用过滤群、监听群和推送绑定数量摘要。 |
 | `.cf overview csv` | 以 CSV 格式列出当前平台启用过滤的群，以及监听群绑定的推送群。 |
 | `.cf regex-skips [数量]` | 查看启动时被跳过的正则规则及原因；仅 AstrBot 管理员可用。 |
-| `.cf enable [群号]` | 启用当前群或指定群过滤；不再作为全局开关。此命令只允许 AstrBot 管理员使用。 |
-| `.cf disable [群号]` | 关闭当前群或指定群过滤；不再作为全局开关。传入群号时只允许 AstrBot 管理员使用。 |
+| `.cf enable [群号]` | 启用当前群或指定群过滤；不再作为全局开关。传入其它群号时只允许 AstrBot 管理员使用。 |
+| `.cf disable [群号]` | 关闭当前群或指定群过滤；不再作为全局开关。传入其它群号时只允许 AstrBot 管理员使用。 |
 | `.cf group status` | 查看当前群过滤状态、继承状态、管理员豁免状态和群自定义词数量。 |
-| `.cf group enable` | 启用当前群过滤。此命令只允许 AstrBot 管理员使用。 |
+| `.cf group enable` | 启用当前群过滤。 |
 | `.cf group disable` | 关闭当前群过滤。 |
 | `.cf group add <词>` | 给当前群添加自定义过滤词。 |
+| `.cf group add-to <群号> <词1,词2,...>` | 给指定群添加一个或多个自定义过滤词；仅 AstrBot 管理员可用。 |
 | `.cf group remove <词>` | 从当前群移除自定义过滤词。 |
 | `.cf group list` | 查看当前群自定义词数量。 |
 | `.cf group admin-exempt status` | 查看当前群群主/管理员豁免开关。 |
@@ -61,8 +62,8 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 ## 权限
 
 - 默认情况下，命令允许 AstrBot 管理员、QQ群主或 QQ 群管理员使用。
-- `.cf enable` 和 `.cf group enable` 更严格，只允许 AstrBot 管理员使用。
-- `.cf disable [群号]` 指定群号时只允许 AstrBot 管理员使用；不指定群号时仍允许当前群的群主或管理员使用。
+- `.cf enable [群号]` 和 `.cf disable [群号]` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改其它群时只允许 AstrBot 管理员。
+- `.cf group add-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group add <词>`。
 - `.cf regex-skips` 只允许 AstrBot 管理员使用。
 - `.cf action ...` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改指定群号时只允许 AstrBot 管理员。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。

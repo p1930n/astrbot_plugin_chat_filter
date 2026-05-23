@@ -55,6 +55,7 @@ class ChatFilterPlugin(Star):
         self.violation_recorder = runtime.violation_recorder
         self.violation_job_queue = runtime.violation_job_queue
         self.message_filter_service = runtime.message_filter_service
+        self.group_member_role_resolver = runtime.group_member_role_resolver
         self.report_service = runtime.report_service
         self.file_probe_service = runtime.file_probe_service
         self._platform_action_factory = runtime.platform_action_factory
@@ -66,9 +67,14 @@ class ChatFilterPlugin(Star):
         if self._is_own_command(message.text):
             return
 
+        action_client = extract_onebot_action_client(event)
+        message = await self.group_member_role_resolver.resolve_message(
+            message,
+            action_client,
+        )
         platform_actions = self._platform_action_factory.for_platform(
             message.platform,
-            extract_onebot_action_client(event),
+            action_client,
         )
         self.violation_job_queue.register_platform_actions(
             message.platform,
@@ -273,6 +279,15 @@ class ChatFilterPlugin(Star):
     @cf_group.command("add")
     async def cf_group_add(self, event: AstrMessageEvent, word: str):
         yield await self._command_gateway.group_add(event, word)
+
+    @cf_group.command("add-to")
+    async def cf_group_add_to(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+        word: str = "",
+    ):
+        yield await self._command_gateway.group_add_to(event, group_id, word)
 
     @cf_group.command("remove")
     async def cf_group_remove(self, event: AstrMessageEvent, word: str):

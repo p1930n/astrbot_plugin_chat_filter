@@ -52,11 +52,11 @@ _install_astrbot_stubs()
 
 from astrbot_plugin_chat_filter.commands.command_auth import (  # noqa: E402
     COMMAND_PERMISSION_DENIED,
-    GROUP_ENABLE_PERMISSION_DENIED,
     CommandAuthorizer,
 )
 from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E402
     GLOBAL_DIAGNOSTICS_PERMISSION_DENIED,
+    GROUP_ADD_TO_USAGE,
     GROUP_ADMIN_EXEMPT_USAGE,
     GROUP_DISABLE_USAGE,
     GROUP_ENABLE_USAGE,
@@ -66,6 +66,9 @@ from astrbot_plugin_chat_filter.commands.command_controller import (  # noqa: E4
 from astrbot_plugin_chat_filter.domain.models import PlatformEventSnapshot  # noqa: E402
 from astrbot_plugin_chat_filter.platform.command_gateway import (  # noqa: E402
     CommandGateway,
+)
+from astrbot_plugin_chat_filter.platform.group_member_role_resolver import (  # noqa: E402
+    GroupMemberRoleResolver,
 )
 from astrbot_plugin_chat_filter.runtime.metrics import ChatFilterMetrics  # noqa: E402
 
@@ -116,7 +119,7 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
         self.assertEqual(service.admin_exempt_status_calls, ["qq:100"])
         self.assertEqual(service.admin_exempt_calls, [])
 
-    def test_group_enable_uses_stricter_global_admin_authorization(self) -> None:
+    def test_group_enable_allows_current_group_manager(self) -> None:
         manager_service = _CommandService()
         manager_controller = _controller(service=manager_service)
 
@@ -130,8 +133,8 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
             admin_controller.group_enable(_snapshot(sender_role="member"))
         )
 
-        self.assertEqual(manager_result, GROUP_ENABLE_PERMISSION_DENIED)
-        self.assertEqual(manager_service.group_enabled_calls, [])
+        self.assertEqual(manager_result, "Chat Filter enabled for this group.")
+        self.assertEqual(manager_service.group_enabled_calls, [("qq:100", True)])
         self.assertEqual(admin_result, "Chat Filter enabled for this group.")
         self.assertEqual(admin_service.group_enabled_calls, [("qq:100", True)])
 
@@ -312,6 +315,107 @@ class CommandControllerAdminExemptTests(unittest.TestCase):
         self.assertEqual(result, "action-overview:qq:csv")
         self.assertEqual(service.action_overview_calls, [("qq", "csv")])
 
+    def test_group_add_to_target_group_requires_global_admin(self) -> None:
+        manager_service = _CommandService()
+        manager_controller = _controller(service=manager_service)
+
+        manager_result = _run(
+            manager_controller.group_add_to(
+                _snapshot(sender_role="admin"),
+                "300",
+                "blocked-word",
+            )
+        )
+
+        admin_service = _CommandService()
+        admin_controller = _controller(service=admin_service, admins=("200",))
+        admin_result = _run(
+            admin_controller.group_add_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "blocked-word",
+            )
+        )
+
+        self.assertEqual(manager_result, TARGET_GROUP_PERMISSION_DENIED)
+        self.assertEqual(manager_service.group_word_calls, [])
+        self.assertEqual(admin_result, "Group word added.")
+        self.assertEqual(
+            admin_service.group_word_calls,
+            [("qq:300", "blocked-word")],
+        )
+
+    def test_group_add_to_rejects_invalid_target_or_missing_word(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        invalid_group = _run(
+            controller.group_add_to(_snapshot(sender_role="member"), "abc", "word")
+        )
+        missing_word = _run(
+            controller.group_add_to(_snapshot(sender_role="member"), "300", "")
+        )
+
+        self.assertEqual(invalid_group, GROUP_ADD_TO_USAGE)
+        self.assertEqual(missing_word, GROUP_ADD_TO_USAGE)
+        self.assertEqual(service.group_word_calls, [])
+
+    def test_group_add_to_accepts_comma_separated_words(self) -> None:
+        service = _CommandService()
+        controller = _controller(service=service, admins=("200",))
+
+        result = _run(
+            controller.group_add_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "alpha,beta,gamma",
+            )
+        )
+
+        self.assertEqual(
+            result,
+            "Group words added: added=3, exists=0, invalid=0, limit=0, failed=0.",
+        )
+        self.assertEqual(
+            service.group_word_calls,
+            [("qq:300", "alpha"), ("qq:300", "beta"), ("qq:300", "gamma")],
+        )
+
+    def test_group_add_to_batch_summary_counts_non_added_results(self) -> None:
+        service = _CommandService(
+            group_word_responses=[
+                "Group word added.",
+                "Group word already exists.",
+                "Invalid word length.",
+                "Group word limit reached.",
+                "Chat Filter state update failed.",
+            ]
+        )
+        controller = _controller(service=service, admins=("200",))
+
+        result = _run(
+            controller.group_add_to(
+                _snapshot(sender_role="member"),
+                "300",
+                "one,two,three,four,five",
+            )
+        )
+
+        self.assertEqual(
+            result,
+            "Group words added: added=1, exists=1, invalid=1, limit=1, failed=1.",
+        )
+        self.assertEqual(
+            service.group_word_calls,
+            [
+                ("qq:300", "one"),
+                ("qq:300", "two"),
+                ("qq:300", "three"),
+                ("qq:300", "four"),
+                ("qq:300", "five"),
+            ],
+        )
+
 
 class CommandGatewayAdminExemptTests(unittest.TestCase):
     def test_gateway_stops_event_and_dehydrates_snapshot_for_admin_exempt(self) -> None:
@@ -328,6 +432,30 @@ class CommandGatewayAdminExemptTests(unittest.TestCase):
         self.assertEqual(controller.snapshots[0].group_id, "100")
         self.assertEqual(controller.snapshots[0].sender_id, "200")
         self.assertEqual(controller.snapshots[0].sender_role, "admin")
+
+    def test_gateway_resolves_missing_group_role_from_onebot_api(self) -> None:
+        controller = _GatewayController()
+        action_client = _ActionClient({"role": "owner"})
+        gateway = CommandGateway(
+            controller,
+            _PlatformActionFactory(),
+            GroupMemberRoleResolver(),
+        )
+        event = _Event(
+            sender_id="200",
+            sender_role="",
+            platform_name="aiocqhttp",
+            action_client=action_client,
+        )
+
+        result = _run(gateway.group_admin_exempt(event, "status"))
+
+        self.assertEqual(result, "status:200:owner")
+        self.assertEqual(
+            action_client.calls,
+            [("get_group_member_info", {"group_id": 100, "user_id": 200})],
+        )
+        self.assertEqual(controller.snapshots[0].sender_role, "owner")
 
     def test_gateway_passes_optional_group_id_to_top_level_enable(self) -> None:
         controller = _GatewayController()
@@ -389,6 +517,17 @@ class CommandGatewayAdminExemptTests(unittest.TestCase):
         self.assertEqual(overview, "action-overview:csv:200:admin")
         self.assertTrue(event.stopped)
 
+    def test_gateway_passes_group_add_to_arguments_to_controller(self) -> None:
+        controller = _GatewayController()
+        gateway = CommandGateway(controller, _PlatformActionFactory())
+        event = _Event(sender_id="200", sender_role="admin")
+
+        result = _run(gateway.group_add_to(event, "300", "blocked-word"))
+
+        self.assertEqual(result, "group-add-to:300:blocked-word:200:admin")
+        self.assertTrue(event.stopped)
+        self.assertEqual(len(controller.snapshots), 1)
+
 
 def _controller(
     *,
@@ -419,7 +558,7 @@ def _snapshot(
 
 
 class _CommandService:
-    def __init__(self) -> None:
+    def __init__(self, group_word_responses: list[str] | None = None) -> None:
         self.admin_exempt_calls: list[tuple[str | None, bool]] = []
         self.admin_exempt_status_calls: list[str | None] = []
         self.group_enabled_calls: list[tuple[str | None, bool]] = []
@@ -429,6 +568,8 @@ class _CommandService:
         self.action_toggle_calls: list[tuple[str, str, str, str, str]] = []
         self.action_mode_calls: list[tuple[str, str, str, str]] = []
         self.action_overview_calls: list[tuple[str, str]] = []
+        self.group_word_calls: list[tuple[str | None, str]] = []
+        self.group_word_responses = group_word_responses or []
 
     def format_group_admin_exempt_status(self, group_key: str | None) -> str:
         self.admin_exempt_status_calls.append(group_key)
@@ -449,6 +590,12 @@ class _CommandService:
         if enabled:
             return "Chat Filter enabled for this group."
         return "Chat Filter disabled for this group."
+
+    async def add_group_word(self, group_key: str | None, word: str) -> str:
+        self.group_word_calls.append((group_key, word))
+        if self.group_word_responses:
+            return self.group_word_responses.pop(0)
+        return "Group word added."
 
     async def format_overview(self, platform: str, output_format: str = "") -> str:
         self.overview_calls.append((platform, output_format))
@@ -585,17 +732,38 @@ class _GatewayController:
             f"{snapshot.sender_id}:{snapshot.sender_role}"
         )
 
+    async def group_add_to(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        word: str = "",
+    ) -> str:
+        self.snapshots.append(snapshot)
+        return (
+            f"group-add-to:{group_id}:{word}:"
+            f"{snapshot.sender_id}:{snapshot.sender_role}"
+        )
+
 
 class _PlatformActionFactory:
     pass
 
 
 class _Event:
-    def __init__(self, *, sender_id: str, sender_role: str) -> None:
-        self.platform_name = "qq"
+    def __init__(
+        self,
+        *,
+        sender_id: str,
+        sender_role: str,
+        platform_name: str = "qq",
+        action_client: object | None = None,
+    ) -> None:
+        self.platform_name = platform_name
         self.group_id = "100"
         self.sender_id = sender_id
         self.sender_role = sender_role
+        if action_client is not None:
+            self.bot = types.SimpleNamespace(api=action_client)
         self.stopped = False
 
     def stop_event(self) -> None:
@@ -603,6 +771,16 @@ class _Event:
 
     def plain_result(self, text: str) -> str:
         return text
+
+
+class _ActionClient:
+    def __init__(self, result: dict[str, object]) -> None:
+        self._result = result
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def call_action(self, action: str, **params: object) -> dict[str, object]:
+        self.calls.append((action, params))
+        return self._result
 
 
 def _run(awaitable):

@@ -65,6 +65,7 @@ class PluginRuntimeBuilderTests(unittest.TestCase):
                 "command_authorizer",
                 "command_controller",
                 "platform_action_factory",
+                "group_member_role_resolver",
                 "command_gateway",
             ),
         )
@@ -79,6 +80,10 @@ class PluginRuntimeBuilderTests(unittest.TestCase):
             self.assertIs(
                 runtime.command_gateway._platform_action_factory,
                 runtime.platform_action_factory,
+            )
+            self.assertIs(
+                runtime.command_gateway._group_member_role_resolver,
+                runtime.group_member_role_resolver,
             )
             self.assertIs(
                 runtime.message_filter_service._violation_job_queue,

@@ -21,6 +21,7 @@ GROUP_ADMIN_EXEMPT_USAGE = (
 )
 GROUP_ENABLE_USAGE = "Usage: .cf enable [group id]"
 GROUP_DISABLE_USAGE = "Usage: .cf disable [group id]"
+GROUP_ADD_TO_USAGE = "Usage: .cf group add-to <group id> <word>[,<word>...]"
 TARGET_GROUP_PERMISSION_DENIED = (
     "Chat Filter target group permission denied: "
     "requires AstrBot admin permission."
@@ -325,11 +326,12 @@ class CommandController:
         snapshot: PlatformEventSnapshot,
         group_id: str = "",
     ) -> str:
-        denial = self.command_denial(snapshot, allow_group_manager=False)
+        target_group_id = group_id.strip()
+        denial = self._target_group_permission_denial(snapshot, target_group_id)
         if denial:
             return denial
 
-        group_key = resolve_target_group_key(snapshot, group_id)
+        group_key = resolve_target_group_key(snapshot, target_group_id)
         if group_key is None:
             return GROUP_ENABLE_USAGE
         return await self._command_service.set_group_enabled(group_key, True)
@@ -340,13 +342,9 @@ class CommandController:
         group_id: str = "",
     ) -> str:
         target_group_id = group_id.strip()
-        if target_group_id:
-            if not self.check_global_permission(snapshot):
-                return TARGET_GROUP_PERMISSION_DENIED
-        else:
-            denial = self.command_denial(snapshot)
-            if denial:
-                return denial
+        denial = self._target_group_permission_denial(snapshot, target_group_id)
+        if denial:
+            return denial
 
         group_key = resolve_target_group_key(snapshot, target_group_id)
         if group_key is None:
@@ -361,7 +359,7 @@ class CommandController:
         return self._command_service.format_group_status(build_group_key(snapshot))
 
     async def group_enable(self, snapshot: PlatformEventSnapshot) -> str:
-        denial = self.command_denial(snapshot, allow_group_manager=False)
+        denial = self.command_denial(snapshot)
         if denial:
             return denial
 
@@ -390,6 +388,56 @@ class CommandController:
             return denial
 
         return await self._command_service.add_group_word(build_group_key(snapshot), word)
+
+    async def group_add_to(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+        word: str = "",
+    ) -> str:
+        if not self.check_global_permission(snapshot):
+            return TARGET_GROUP_PERMISSION_DENIED
+
+        group_key = resolve_target_group_key(snapshot, group_id)
+        words = _split_group_words(word)
+        if group_key is None or not words:
+            return GROUP_ADD_TO_USAGE
+        if len(words) == 1:
+            return await self._command_service.add_group_word(group_key, words[0])
+        return await self._add_group_words(group_key, words)
+
+    async def _add_group_words(
+        self,
+        group_key: str,
+        words: tuple[str, ...],
+    ) -> str:
+        counts = {
+            "added": 0,
+            "exists": 0,
+            "invalid": 0,
+            "limit": 0,
+            "failed": 0,
+        }
+        for word in words:
+            result = await self._command_service.add_group_word(group_key, word)
+            if result == "Group word added.":
+                counts["added"] += 1
+            elif result == "Group word already exists.":
+                counts["exists"] += 1
+            elif result == "Invalid word length.":
+                counts["invalid"] += 1
+            elif result == "Group word limit reached.":
+                counts["limit"] += 1
+            else:
+                counts["failed"] += 1
+        return (
+            "Group words added: "
+            f"added={counts['added']}, "
+            f"exists={counts['exists']}, "
+            f"invalid={counts['invalid']}, "
+            f"limit={counts['limit']}, "
+            f"failed={counts['failed']}."
+        )
 
     async def group_remove(
         self,
@@ -433,6 +481,17 @@ class CommandController:
             return None
         return self.command_denial(snapshot)
 
+    def _target_group_permission_denial(
+        self,
+        snapshot: PlatformEventSnapshot,
+        target_group_id: str,
+    ) -> str | None:
+        if target_group_id and target_group_id != snapshot.group_id:
+            if not self.check_global_permission(snapshot):
+                return TARGET_GROUP_PERMISSION_DENIED
+            return None
+        return self.command_denial(snapshot)
+
     async def group_admin_exempt_text(
         self,
         snapshot: PlatformEventSnapshot,
@@ -453,3 +512,14 @@ class CommandController:
                 False,
             )
         return GROUP_ADMIN_EXEMPT_USAGE
+
+
+def _split_group_words(words: str) -> tuple[str, ...]:
+    return tuple(
+        item
+        for item in (
+            part.strip()
+            for part in words.replace("\uff0c", ",").split(",")
+        )
+        if item
+    )

@@ -138,8 +138,13 @@ class MainGroupMessageFilterTests(unittest.TestCase):
         self.assertEqual(message.group_id, "100")
         self.assertEqual(message.user_id, "200")
         self.assertEqual(message.text, "blocked text")
+        self.assertEqual(message.sender_role, "admin")
         self.assertIs(platform_actions, factory.actions)
         self.assertEqual(factory.calls, [("aiocqhttp", action_client)])
+        self.assertEqual(
+            plugin.group_member_role_resolver.calls,
+            [("aiocqhttp", "100", "200", action_client)],
+        )
         self.assertEqual(job_queue.register_calls, [("aiocqhttp", factory.actions)])
         self.assertEqual(job_queue.start_calls, 1)
 
@@ -177,6 +182,31 @@ class _MessageFilterService:
     async def handle_group_message(self, message, platform_actions):
         self.calls.append((message, platform_actions))
         return self._result
+
+
+class _RoleResolver:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str, object | None]] = []
+
+    async def resolve_message(self, message, action_client):
+        self.calls.append(
+            (
+                message.platform,
+                message.group_id,
+                message.user_id,
+                action_client,
+            )
+        )
+        return type(message)(
+            platform=message.platform,
+            group_id=message.group_id,
+            user_id=message.user_id,
+            text=message.text,
+            message_id=message.message_id,
+            sender_role="admin",
+            sender_display_name=message.sender_display_name,
+            group_display_name=message.group_display_name,
+        )
 
 
 class _PlatformActionFactory:
@@ -234,6 +264,7 @@ def _plugin(
 ) -> ChatFilterPlugin:
     plugin = object.__new__(ChatFilterPlugin)
     plugin.message_filter_service = service
+    plugin.group_member_role_resolver = _RoleResolver()
     plugin._platform_action_factory = factory
     plugin.violation_job_queue = job_queue
     return plugin

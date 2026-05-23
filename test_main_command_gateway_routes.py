@@ -154,6 +154,7 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
             ("cf_group_enable", "group_enable", ()),
             ("cf_group_disable", "group_disable", ()),
             ("cf_group_add", "group_add", ("word",)),
+            ("cf_group_add_to", "group_add_to", ("group-1", "word")),
             ("cf_group_remove", "group_remove", ("word",)),
             ("cf_group_list", "group_list", ()),
             ("cf_group_admin_exempt", "group_admin_exempt", ("off",)),

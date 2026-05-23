@@ -53,7 +53,7 @@ class GlobalCommandService:
             "Chat Filter commands: "
             ".cf status; .cf overview [csv]; .cf regex-skips [limit]; "
             ".cf enable [group id]; .cf disable [group id]; "
-            ".cf group status|enable|disable|add|remove|list; "
+            ".cf group status|enable|disable|add|add-to|remove|list; "
             ".cf group admin-exempt status|enable|disable (alias: exempt); "
             ".cf action status|mute|recall|forward|mode|overview; "
             ".cf bind; .cf mute; .cf mute-stack; "

@@ -14,6 +14,7 @@ from .message_filter_service import MessageFilterService
 from ..domain.models import RuntimeState
 from ..platform.platform_action_factory import PlatformActionFactory
 from ..platform.platform_actions import PlatformActions
+from ..platform.group_member_role_resolver import GroupMemberRoleResolver
 from ..services.report_service import ViolationReportService
 from ..persistence.repository import ChatFilterRepository, default_data_root
 from ..domain.rule_snapshot import RuleSnapshot
@@ -60,6 +61,7 @@ class ChatFilterRuntime:
     command_authorizer: CommandAuthorizer
     command_controller: CommandController
     platform_action_factory: PlatformActionFactory
+    group_member_role_resolver: GroupMemberRoleResolver
     command_gateway: CommandGateway
 
 
@@ -140,9 +142,11 @@ def build_chat_filter_runtime(
         platform_actions_provider or (lambda: platform_actions),
         logger=logger,
     )
+    group_member_role_resolver = GroupMemberRoleResolver(logger=logger)
     command_gateway = CommandGateway(
         command_controller,
         platform_action_factory,
+        group_member_role_resolver,
     )
     return ChatFilterRuntime(
         settings=settings,
@@ -163,5 +167,6 @@ def build_chat_filter_runtime(
         command_authorizer=command_authorizer,
         command_controller=command_controller,
         platform_action_factory=platform_action_factory,
+        group_member_role_resolver=group_member_role_resolver,
         command_gateway=command_gateway,
     )
