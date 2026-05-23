@@ -307,25 +307,38 @@ class ChatFilterPlugin(Star):
         yield await self._command_gateway.group_list(event)
 
     @cf_group.command("bypass-add")
-    async def cf_group_bypass_add(self, event: AstrMessageEvent, word: str = ""):
-        yield await self._command_gateway.group_bypass_add(event, word)
-
-    @cf_group.command("bypass-remove")
-    async def cf_group_bypass_remove(self, event: AstrMessageEvent, word: str = ""):
-        yield await self._command_gateway.group_bypass_remove(event, word)
-
-    @cf_group.command("bypass-list")
-    async def cf_group_bypass_list(self, event: AstrMessageEvent):
-        yield await self._command_gateway.group_bypass_list(event)
-
-    @cf_group.command("bypass-add-to")
-    async def cf_group_bypass_add_to(
+    async def cf_group_bypass_add(
         self,
         event: AstrMessageEvent,
         group_id: str = "",
         word: str = "",
     ):
-        yield await self._command_gateway.group_bypass_add_to(event, group_id, word)
+        yield await self._command_gateway.group_bypass_add(
+            event,
+            group_id,
+            word,
+        )
+
+    @cf_group.command("bypass-remove")
+    async def cf_group_bypass_remove(
+        self,
+        event: AstrMessageEvent,
+        group_id_or_word: str = "",
+        word: str = "",
+    ):
+        yield await self._command_gateway.group_bypass_remove(
+            event,
+            group_id_or_word,
+            word,
+        )
+
+    @cf_group.command("bypass-list")
+    async def cf_group_bypass_list(
+        self,
+        event: AstrMessageEvent,
+        group_id: str = "",
+    ):
+        yield await self._command_gateway.group_bypass_list(event, group_id)
 
     @cf_group.command("admin-exempt")
     async def cf_group_admin_exempt(

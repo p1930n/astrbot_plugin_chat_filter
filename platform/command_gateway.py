@@ -371,33 +371,7 @@ class CommandGateway:
             await self._controller.group_list(await self._snapshot_for_event(event)),
         )
 
-    async def group_bypass_add(self, event: AstrMessageEvent, word: str = ""):
-        return self.command_result(
-            event,
-            await self._controller.group_bypass_add(
-                await self._snapshot_for_event(event),
-                word,
-            ),
-        )
-
-    async def group_bypass_remove(self, event: AstrMessageEvent, word: str = ""):
-        return self.command_result(
-            event,
-            await self._controller.group_bypass_remove(
-                await self._snapshot_for_event(event),
-                word,
-            ),
-        )
-
-    async def group_bypass_list(self, event: AstrMessageEvent):
-        return self.command_result(
-            event,
-            await self._controller.group_bypass_list(
-                await self._snapshot_for_event(event)
-            ),
-        )
-
-    async def group_bypass_add_to(
+    async def group_bypass_add(
         self,
         event: AstrMessageEvent,
         group_id: str = "",
@@ -405,10 +379,34 @@ class CommandGateway:
     ):
         return self.command_result(
             event,
-            await self._controller.group_bypass_add_to(
+            await self._controller.group_bypass_add(
                 await self._snapshot_for_event(event),
                 group_id,
                 word,
+            ),
+        )
+
+    async def group_bypass_remove(
+        self,
+        event: AstrMessageEvent,
+        group_id_or_word: str = "",
+        word: str = "",
+    ):
+        return self.command_result(
+            event,
+            await self._controller.group_bypass_remove(
+                await self._snapshot_for_event(event),
+                group_id_or_word,
+                word,
+            ),
+        )
+
+    async def group_bypass_list(self, event: AstrMessageEvent, group_id: str = ""):
+        return self.command_result(
+            event,
+            await self._controller.group_bypass_list(
+                await self._snapshot_for_event(event),
+                group_id,
             ),
         )
 

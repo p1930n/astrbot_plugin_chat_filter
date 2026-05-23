@@ -158,10 +158,9 @@ class MainCommandGatewayRouteTests(unittest.TestCase):
             ("cf_group_remove", "group_remove", ("word",)),
             ("cf_group_remove_to", "group_remove_to", ("group-1", "word")),
             ("cf_group_list", "group_list", ()),
-            ("cf_group_bypass_add", "group_bypass_add", ("word",)),
-            ("cf_group_bypass_remove", "group_bypass_remove", ("word",)),
-            ("cf_group_bypass_list", "group_bypass_list", ()),
-            ("cf_group_bypass_add_to", "group_bypass_add_to", ("group-1", "word")),
+            ("cf_group_bypass_add", "group_bypass_add", ("group-1", "word")),
+            ("cf_group_bypass_remove", "group_bypass_remove", ("group-1", "word")),
+            ("cf_group_bypass_list", "group_bypass_list", ("group-1",)),
             ("cf_group_admin_exempt", "group_admin_exempt", ("off",)),
             ("cf_group_exempt", "group_admin_exempt", ("on",)),
         )

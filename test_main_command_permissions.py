@@ -291,28 +291,86 @@ class MainCommandPermissionTests(unittest.TestCase):
             [("qq:200", "blocked-word")],
         )
 
-    def test_group_bypass_commands_require_astrbot_admin(self) -> None:
+    def test_group_bypass_current_group_commands_allow_group_manager(self) -> None:
         command_service = _CommandService()
         plugin = _plugin(admins=(), command_service=command_service)
         event = _event(sender_id="200", role="admin", group_id="100")
 
         add_results = _collect_async_generator(
-            plugin.cf_group_bypass_add(event, "global-word")
+            plugin.cf_group_bypass_add(event, "100", "global-word")
+        )
+        second_add_results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "100", "alias-word")
         )
         remove_results = _collect_async_generator(
             plugin.cf_group_bypass_remove(event, "global-word")
         )
         list_results = _collect_async_generator(plugin.cf_group_bypass_list(event))
-        add_to_results = _collect_async_generator(
-            plugin.cf_group_bypass_add_to(event, "200", "global-word")
+        other_group_add_results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "200", "global-word")
         )
 
-        self.assertEqual(add_results, [TARGET_GROUP_PERMISSION_DENIED])
-        self.assertEqual(remove_results, [TARGET_GROUP_PERMISSION_DENIED])
-        self.assertEqual(list_results, [TARGET_GROUP_PERMISSION_DENIED])
-        self.assertEqual(add_to_results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertEqual(add_results, ["Group bypass word added."])
+        self.assertEqual(second_add_results, ["Group bypass word added."])
+        self.assertEqual(remove_results, ["Group bypass word removed."])
+        self.assertEqual(list_results, ["Group bypass word count: 1."])
+        self.assertEqual(other_group_add_results, [TARGET_GROUP_PERMISSION_DENIED])
+        self.assertTrue(event.stopped)
+        self.assertEqual(
+            command_service.group_bypass_word_calls,
+            [("qq:100", "global-word"), ("qq:100", "alias-word")],
+        )
+        self.assertEqual(
+            command_service.group_bypass_word_remove_calls,
+            [("qq:100", "global-word")],
+        )
+
+    def test_group_bypass_add_allows_onebot_owner_for_explicit_current_group(
+        self,
+    ) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(
+            sender_id="3324922484",
+            role="owner",
+            platform_name="aiocqhttp",
+            group_id="688067673",
+        )
+
+        results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "688067673", "靠")
+        )
+
+        self.assertEqual(results, ["Group bypass word added."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(
+            command_service.group_bypass_word_calls,
+            [("aiocqhttp:688067673", "靠")],
+        )
+
+    def test_group_bypass_current_group_commands_deny_plain_member(self) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=(), command_service=command_service)
+        event = _event(sender_id="200", role="member", group_id="100")
+
+        add_results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "100", "global-word")
+        )
+        second_add_results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "100", "global-word")
+        )
+        remove_results = _collect_async_generator(
+            plugin.cf_group_bypass_remove(event, "global-word")
+        )
+        list_results = _collect_async_generator(plugin.cf_group_bypass_list(event))
+
+        self.assertEqual(add_results, [COMMAND_PERMISSION_DENIED])
+        self.assertEqual(second_add_results, [COMMAND_PERMISSION_DENIED])
+        self.assertEqual(remove_results, [COMMAND_PERMISSION_DENIED])
+        self.assertEqual(list_results, [COMMAND_PERMISSION_DENIED])
         self.assertTrue(event.stopped)
         self.assertEqual(command_service.group_bypass_word_calls, [])
+        self.assertEqual(command_service.group_bypass_word_remove_calls, [])
 
     def test_group_bypass_add_allows_astrbot_admin_for_current_group(self) -> None:
         command_service = _CommandService()
@@ -320,7 +378,7 @@ class MainCommandPermissionTests(unittest.TestCase):
         event = _event(sender_id="200", role="member", group_id="100")
 
         results = _collect_async_generator(
-            plugin.cf_group_bypass_add(event, "global-word")
+            plugin.cf_group_bypass_add(event, "100", "global-word")
         )
 
         self.assertEqual(results, ["Group bypass word added."])
@@ -328,6 +386,48 @@ class MainCommandPermissionTests(unittest.TestCase):
         self.assertEqual(
             command_service.group_bypass_word_calls,
             [("qq:100", "global-word")],
+        )
+
+    def test_explicit_target_group_commands_allow_astrbot_admin_outside_group(
+        self,
+    ) -> None:
+        command_service = _CommandService()
+        plugin = _plugin(admins=("200",), command_service=command_service)
+        event = _event(sender_id="200", role="", group_id="")
+
+        enable_results = _collect_async_generator(plugin.cf_enable(event, "300"))
+        disable_results = _collect_async_generator(plugin.cf_disable(event, "300"))
+        add_to_results = _collect_async_generator(
+            plugin.cf_group_add_to(event, "300", "blocked-word")
+        )
+        remove_to_results = _collect_async_generator(
+            plugin.cf_group_remove_to(event, "300", "blocked-word")
+        )
+        bypass_add_results = _collect_async_generator(
+            plugin.cf_group_bypass_add(event, "300", "靠")
+        )
+
+        self.assertEqual(enable_results, ["Chat Filter enabled for this group."])
+        self.assertEqual(disable_results, ["Chat Filter disabled for this group."])
+        self.assertEqual(add_to_results, ["Group word added."])
+        self.assertEqual(remove_to_results, ["Group word removed."])
+        self.assertEqual(bypass_add_results, ["Group bypass word added."])
+        self.assertTrue(event.stopped)
+        self.assertEqual(
+            command_service.group_enabled_calls,
+            [("qq:300", True), ("qq:300", False)],
+        )
+        self.assertEqual(
+            command_service.group_word_calls,
+            [("qq:300", "blocked-word")],
+        )
+        self.assertEqual(
+            command_service.group_word_remove_calls,
+            [("qq:300", "blocked-word")],
+        )
+        self.assertEqual(
+            command_service.group_bypass_word_calls,
+            [("qq:300", "靠")],
         )
 
     def test_group_enable_allows_astrbot_admin_when_managers_disallowed(

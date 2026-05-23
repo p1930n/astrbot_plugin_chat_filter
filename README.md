@@ -21,6 +21,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 ## 指令
 
 以下示例使用 `.cf`。插件仅保留 `cf` 命令入口，避免重复前缀注册到同一批功能。
+显式传入群号的指令不依赖当前消息所在群，可在私聊或任意有机器人的群聊发送；省略群号时才使用当前群，因此需要在群聊中发送。
 
 | 指令 | 说明 |
 | --- | --- |
@@ -39,10 +40,9 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 | `.cf group remove <词1,词2,...>` | 从当前群移除一个或多个自定义过滤词。 |
 | `.cf group remove-to <群号> <词1,词2,...>` | 从指定群移除一个或多个自定义过滤词；仅 AstrBot 管理员可用。 |
 | `.cf group list` | 查看当前群自定义词数量。 |
-| `.cf group bypass-add <词1,词2,...>` | 当前群绕过一个或多个全局普通词；仅 AstrBot 管理员可用。 |
-| `.cf group bypass-remove <词1,词2,...>` | 移除当前群的全局普通词绕过项；仅 AstrBot 管理员可用。 |
-| `.cf group bypass-list` | 查看当前群全局普通词绕过数量；仅 AstrBot 管理员可用。 |
-| `.cf group bypass-add-to <群号> <词1,词2,...>` | 指定群绕过一个或多个全局普通词；仅 AstrBot 管理员可用。 |
+| `.cf group bypass-add <群号> <词1,词2,...>` | 当前群或指定群绕过一个或多个全局普通词；命中这些短语的全局正则片段也会跳过。 |
+| `.cf group bypass-remove [群号] <词1,词2,...>` | 移除当前群或指定群的全局普通词绕过项。 |
+| `.cf group bypass-list [群号]` | 查看当前群或指定群全局普通词绕过数量。 |
 | `.cf group admin-exempt status` | 查看当前群群主/管理员豁免开关。 |
 | `.cf group admin-exempt enable` | 开启当前群群主/管理员豁免。 |
 | `.cf group admin-exempt disable` | 关闭当前群群主/管理员豁免。 |
@@ -70,7 +70,7 @@ AstrBot 群聊过滤插件。插件会在群消息中检测违禁词和正则规
 - `.cf enable [群号]` 和 `.cf disable [群号]` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改其它群时只允许 AstrBot 管理员。
 - `.cf group add-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group add <词>`。
 - `.cf group remove-to <群号> <词1,词2,...>` 只允许 AstrBot 管理员使用；当前群群主或管理员可继续使用 `.cf group remove <词>`。
-- `.cf group bypass-*` 会削弱全局普通词策略，只允许 AstrBot 管理员使用。
+- `.cf group bypass-add <群号> <词1,词2,...>`、`.cf group bypass-remove [群号] <词1,词2,...>` 和 `.cf group bypass-list [群号]` 修改或查看当前群时允许 AstrBot 管理员或当前群群主/管理员；传入其它群号时只允许 AstrBot 管理员。
 - `.cf regex-skips` 只允许 AstrBot 管理员使用。
 - `.cf action ...` 修改当前群时允许 AstrBot 管理员或当前群群主/管理员；修改指定群号时只允许 AstrBot 管理员。
 - 权限判断依赖 AstrBot 配置中的管理员 ID 和平台事件中的群角色信息，不信任消息文本中的自称身份。

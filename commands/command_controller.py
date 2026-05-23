@@ -24,10 +24,9 @@ GROUP_DISABLE_USAGE = "Usage: .cf disable [group id]"
 GROUP_ADD_TO_USAGE = "Usage: .cf group add-to <group id> <word>[,<word>...]"
 GROUP_REMOVE_USAGE = "Usage: .cf group remove <word>[,<word>...]"
 GROUP_REMOVE_TO_USAGE = "Usage: .cf group remove-to <group id> <word>[,<word>...]"
-GROUP_BYPASS_ADD_USAGE = "Usage: .cf group bypass-add <word>[,<word>...]"
-GROUP_BYPASS_REMOVE_USAGE = "Usage: .cf group bypass-remove <word>[,<word>...]"
-GROUP_BYPASS_ADD_TO_USAGE = (
-    "Usage: .cf group bypass-add-to <group id> <word>[,<word>...]"
+GROUP_BYPASS_ADD_USAGE = "Usage: .cf group bypass-add <group id> <word>[,<word>...]"
+GROUP_BYPASS_REMOVE_USAGE = (
+    "Usage: .cf group bypass-remove [group id] <word>[,<word>...]"
 )
 TARGET_GROUP_PERMISSION_DENIED = (
     "Chat Filter target group permission denied: "
@@ -501,37 +500,30 @@ class CommandController:
     async def group_bypass_add(
         self,
         snapshot: PlatformEventSnapshot,
-        word: str = "",
-    ) -> str:
-        if not self.check_global_permission(snapshot):
-            return TARGET_GROUP_PERMISSION_DENIED
-
-        group_key = build_group_key(snapshot)
-        words = _split_group_words(word)
-        if group_key is None:
-            return "This command must be used in a group chat."
-        if not words:
-            return GROUP_BYPASS_ADD_USAGE
-        if len(words) == 1:
-            return await self._command_service.add_group_bypass_word(
-                group_key,
-                words[0],
-            )
-        return await self._add_group_words(group_key, words, bypass=True)
-
-    async def group_bypass_add_to(
-        self,
-        snapshot: PlatformEventSnapshot,
         group_id: str = "",
         word: str = "",
     ) -> str:
-        if not self.check_global_permission(snapshot):
-            return TARGET_GROUP_PERMISSION_DENIED
+        return await self._add_group_bypass_words_to_target(
+            snapshot,
+            group_id,
+            word,
+        )
 
-        group_key = resolve_target_group_key(snapshot, group_id)
+    async def _add_group_bypass_words_to_target(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str,
+        word: str,
+    ) -> str:
+        target_group_id = group_id.strip()
+        denial = self._target_group_permission_denial(snapshot, target_group_id)
+        if denial:
+            return denial
+
+        group_key = resolve_target_group_key(snapshot, target_group_id)
         words = _split_group_words(word)
-        if group_key is None or not words:
-            return GROUP_BYPASS_ADD_TO_USAGE
+        if not target_group_id or group_key is None or not words:
+            return GROUP_BYPASS_ADD_USAGE
         if len(words) == 1:
             return await self._command_service.add_group_bypass_word(
                 group_key,
@@ -542,17 +534,23 @@ class CommandController:
     async def group_bypass_remove(
         self,
         snapshot: PlatformEventSnapshot,
+        group_id_or_word: str = "",
         word: str = "",
     ) -> str:
-        if not self.check_global_permission(snapshot):
-            return TARGET_GROUP_PERMISSION_DENIED
+        target_group_id, words_text = _optional_target_group_and_words(
+            group_id_or_word,
+            word,
+        )
+        denial = self._target_group_permission_denial(snapshot, target_group_id)
+        if denial:
+            return denial
 
-        group_key = build_group_key(snapshot)
-        words = _split_group_words(word)
-        if group_key is None:
-            return "This command must be used in a group chat."
+        group_key = resolve_target_group_key(snapshot, target_group_id)
+        words = _split_group_words(words_text)
         if not words:
             return GROUP_BYPASS_REMOVE_USAGE
+        if group_key is None:
+            return "This command must be used in a group chat."
         if len(words) == 1:
             return await self._command_service.remove_group_bypass_word(
                 group_key,
@@ -560,12 +558,17 @@ class CommandController:
             )
         return await self._remove_group_words(group_key, words, bypass=True)
 
-    async def group_bypass_list(self, snapshot: PlatformEventSnapshot) -> str:
-        if not self.check_global_permission(snapshot):
-            return TARGET_GROUP_PERMISSION_DENIED
-        return self._command_service.format_group_bypass_words(
-            build_group_key(snapshot)
-        )
+    async def group_bypass_list(
+        self,
+        snapshot: PlatformEventSnapshot,
+        group_id: str = "",
+    ) -> str:
+        target_group_id = group_id.strip()
+        denial = self._target_group_permission_denial(snapshot, target_group_id)
+        if denial:
+            return denial
+        group_key = resolve_target_group_key(snapshot, target_group_id)
+        return self._command_service.format_group_bypass_words(group_key)
 
     async def _remove_group_words(
         self,
@@ -675,3 +678,12 @@ def _split_group_words(words: str) -> tuple[str, ...]:
         )
         if item
     )
+
+
+def _optional_target_group_and_words(
+    group_id_or_word: str,
+    word: str,
+) -> tuple[str, str]:
+    if word:
+        return group_id_or_word.strip(), word
+    return "", group_id_or_word

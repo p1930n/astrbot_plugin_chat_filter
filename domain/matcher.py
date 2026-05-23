@@ -55,7 +55,16 @@ class ChatFilterMatcher:
                 matched_word=matched_word,
             )
 
-        matched_regex = self._detect_regex(message.text, regex_rules)
+        matched_regex = self._detect_regex(
+            message.text,
+            regex_rules,
+            bypass_global_words=policy.bypass_global_words,
+            case_sensitive=rule_snapshot.case_sensitive,
+            obfuscated_matching_enabled=(
+                settings.obfuscated_word_matching_enabled
+            ),
+            obfuscated_max_gap=settings.obfuscated_word_max_gap,
+        )
         if matched_regex is not None:
             return MatchResult(
                 matched=True,
@@ -65,12 +74,28 @@ class ChatFilterMatcher:
         return MatchResult(matched=False, word_count=rule_count)
 
     @staticmethod
-    def _detect_regex(text: str, rules: tuple[RegexRule, ...]) -> str | None:
+    def _detect_regex(
+        text: str,
+        rules: tuple[RegexRule, ...],
+        *,
+        bypass_global_words: tuple[str, ...],
+        case_sensitive: bool,
+        obfuscated_matching_enabled: bool,
+        obfuscated_max_gap: int,
+    ) -> str | None:
         if not rules:
             return None
         target = text[:MAX_REGEX_MATCH_TEXT_LENGTH]
         for rule in rules:
-            if rule.compiled.search(target):
+            for match in rule.compiled.finditer(target):
+                if _regex_match_is_bypassed(
+                    match.group(0),
+                    bypass_global_words,
+                    case_sensitive=case_sensitive,
+                    obfuscated_matching_enabled=obfuscated_matching_enabled,
+                    obfuscated_max_gap=obfuscated_max_gap,
+                ):
+                    continue
                 return rule.pattern
         return None
 
@@ -116,6 +141,28 @@ class ChatFilterMatcher:
             return global_words + custom_words
         bypass_set = set(bypass_global_words)
         return tuple(word for word in global_words if word not in bypass_set) + custom_words
+
+
+def _regex_match_is_bypassed(
+    matched_text: str,
+    bypass_global_words: tuple[str, ...],
+    *,
+    case_sensitive: bool,
+    obfuscated_matching_enabled: bool,
+    obfuscated_max_gap: int,
+) -> bool:
+    if not matched_text or not bypass_global_words:
+        return False
+    return (
+        ChatFilterMatcher._detect_word(
+            matched_text,
+            bypass_global_words,
+            case_sensitive=case_sensitive,
+            obfuscated_matching_enabled=obfuscated_matching_enabled,
+            obfuscated_max_gap=obfuscated_max_gap,
+        )
+        is not None
+    )
 
 
 def _has_gapped_word_match(text: str, word: str, max_gap: int) -> bool:
